@@ -40,6 +40,10 @@ jobs:
       # 4. Deploy direct op de VM (via kubectl)
       - name: Deploy to K3s
         run: |
+          # Zorg dat we rechten hebben (tijdelijke fix voor permission denied)
+          # In productie zou je de runner user aan de juiste groep toevoegen
+          sudo chmod 644 /etc/rancher/k3s/k3s.yaml
+          
           # Gebruik de lokale K3s config op de server
           export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
           
