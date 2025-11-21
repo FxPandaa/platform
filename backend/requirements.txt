@@ -2,3 +2,7 @@ fastapi
 uvicorn
 kubernetes
 pydantic
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+sqlalchemy
