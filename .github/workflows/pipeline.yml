@@ -19,25 +19,23 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 1.5 Setup Docker Buildx
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+      # 1.5 Debug Docker
+      - name: Check Docker Permissions
+        run: docker info
 
-      # 2. Build & Push Backend
+      # 2. Build & Push Backend (Shell commands are more stable on self-hosted)
       - name: Build and Push Backend
-        uses: docker/build-push-action@v4
-        with:
-          context: ./backend
-          push: true
-          tags: fxpandaa/platform:backend-latest
+        run: |
+          cd backend
+          docker build -t fxpandaa/platform:backend-latest .
+          docker push fxpandaa/platform:backend-latest
 
       # 3. Build & Push Frontend
       - name: Build and Push Frontend
-        uses: docker/build-push-action@v4
-        with:
-          context: ./frontend
-          push: true
-          tags: fxpandaa/platform:frontend-latest
+        run: |
+          cd frontend
+          docker build -t fxpandaa/platform:frontend-latest .
+          docker push fxpandaa/platform:frontend-latest
 
       # 4. Deploy direct op de VM (via kubectl)
       - name: Deploy to K3s
