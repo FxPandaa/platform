@@ -37,6 +37,8 @@ spec:
       labels:
         app: backend
     spec:
+      imagePullSecrets:
+      - name: regcred
       serviceAccountName: platform-admin
       containers:
       - name: backend
@@ -74,6 +76,8 @@ spec:
       labels:
         app: frontend
     spec:
+      imagePullSecrets:
+      - name: regcred
       containers:
       - name: frontend
         image: fxpandaa/platform:frontend-latest
