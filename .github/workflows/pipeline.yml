@@ -1,0 +1,49 @@
+name: CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # 1. Docker Login
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # 2. Build & Push Backend
+      - name: Build and Push Backend
+        uses: docker/build-push-action@v4
+        with:
+          context: ./backend
+          push: true
+          tags: fxpandaa/platform:backend-latest
+
+      # 3. Build & Push Frontend
+      - name: Build and Push Frontend
+        uses: docker/build-push-action@v4
+        with:
+          context: ./frontend
+          push: true
+          tags: fxpandaa/platform:frontend-latest
+
+      # 4. Deploy direct op de VM (via kubectl)
+      - name: Deploy to K3s
+        run: |
+          # Gebruik de lokale K3s config op de server
+          export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+          
+          # Apply de configuratie
+          kubectl apply -f k8s/platform.yaml
+          
+          # Forceer een update van de pods
+          kubectl rollout restart deployment/backend -n admin-platform
+          kubectl rollout restart deployment/frontend -n admin-platform
