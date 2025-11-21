@@ -56,19 +56,27 @@ function Login() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)',
+        bgcolor: 'background.default',
       }}
     >
       <Container maxWidth="xs">
-        <Paper elevation={10} sx={{ p: 4, borderRadius: 3 }}>
-          <Typography variant="h4" align="center" gutterBottom sx={{ fontWeight: 'bold', color: '#333' }}>
+        <Paper 
+          elevation={0} 
+          sx={{ 
+            p: 4, 
+            borderRadius: 3, 
+            bgcolor: 'background.paper',
+            border: '1px solid rgba(255, 255, 255, 0.1)' 
+          }}
+        >
+          <Typography variant="h4" align="center" gutterBottom sx={{ color: 'primary.main' }}>
             {isRegistering ? 'Create Account' : 'Welcome Back'}
           </Typography>
-          <Typography variant="body2" align="center" color="textSecondary" sx={{ mb: 3 }}>
+          <Typography variant="body2" align="center" color="textSecondary" sx={{ mb: 4 }}>
             Self-Service Kubernetes Platform
           </Typography>
 
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+          {error && <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>{error}</Alert>}
 
           <form onSubmit={handleSubmit}>
             <TextField
@@ -79,6 +87,7 @@ function Login() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
+              sx={{ mb: 2 }}
             />
             {isRegistering && (
               <TextField
@@ -89,6 +98,7 @@ function Login() {
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
                 required
+                sx={{ mb: 2 }}
               />
             )}
             <TextField
@@ -100,6 +110,7 @@ function Login() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              sx={{ mb: 3 }}
             />
             
             <Button 
@@ -107,7 +118,7 @@ function Login() {
               type="submit" 
               variant="contained" 
               size="large"
-              sx={{ mt: 3, mb: 2, py: 1.5, fontWeight: 'bold' }}
+              sx={{ py: 1.5 }}
             >
               {isRegistering ? 'Register' : 'Login'}
             </Button>
@@ -115,7 +126,7 @@ function Login() {
 
           <Button 
             fullWidth 
-            color="secondary"
+            sx={{ mt: 2, color: 'text.secondary' }}
             onClick={() => setIsRegistering(!isRegistering)}
           >
             {isRegistering ? 'Already have an account? Login' : 'Need an account? Register'}

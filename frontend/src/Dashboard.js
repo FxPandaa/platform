@@ -92,15 +92,17 @@ function Dashboard() {
   };
 
   return (
-    <Box sx={{ flexGrow: 1, minHeight: '100vh', bgcolor: '#f5f5f5' }}>
-      <AppBar position="static" sx={{ background: '#1e3c72' }}>
+    <Box sx={{ flexGrow: 1, minHeight: '100vh', bgcolor: 'background.default' }}>
+      <AppBar position="static" elevation={0} sx={{ bgcolor: 'background.paper', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
         <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 'bold' }}>
-            {company} Dashboard
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 'bold', color: 'primary.main' }}>
+            {company}
           </Typography>
-          <Typography variant="subtitle1" sx={{ mr: 3 }}>
-            Total Cost: €{calculateTotalCost()} / mo
-          </Typography>
+          <Chip 
+            label={`Total Cost: €${calculateTotalCost()} / mo`} 
+            variant="outlined" 
+            sx={{ mr: 3, borderColor: 'rgba(255,255,255,0.2)', color: 'text.primary' }} 
+          />
           <IconButton color="inherit" onClick={fetchPods} sx={{ mr: 1 }}>
             <RefreshIcon />
           </IconButton>
@@ -110,16 +112,16 @@ function Dashboard() {
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-          <Typography variant="h4" component="h1" color="textPrimary" fontWeight="500">
-            My Services
+      <Container maxWidth="lg" sx={{ mt: 6, mb: 4 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
+          <Typography variant="h4" component="h1" color="textPrimary" fontWeight="600">
+            Services
           </Typography>
           <Button 
             variant="contained" 
             startIcon={<AddIcon />} 
             onClick={() => setOpen(true)}
-            sx={{ bgcolor: '#2a5298', '&:hover': { bgcolor: '#1e3c72' } }}
+            size="large"
           >
             New Service
           </Button>
@@ -128,27 +130,30 @@ function Dashboard() {
         <Grid container spacing={3}>
           {pods.map((pod) => (
             <Grid item xs={12} sm={6} md={4} key={pod.name}>
-              <Card elevation={3} sx={{ borderRadius: 2, transition: '0.3s', '&:hover': { transform: 'translateY(-5px)' } }}>
+              <Card elevation={0} sx={{ bgcolor: 'background.paper', border: '1px solid rgba(255,255,255,0.1)' }}>
                 <CardContent>
-                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                    <Typography variant="h6" component="div" fontWeight="bold">
+                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                    <Typography variant="h6" component="div" fontWeight="bold" color="text.primary">
                       {pod.type.toUpperCase()}
                     </Typography>
                     <Chip 
                       label={pod.status} 
                       color={pod.status.includes('Ready') ? 'success' : 'warning'} 
                       size="small" 
+                      variant="filled"
                     />
                   </Box>
-                  <Typography color="textSecondary" gutterBottom>
+                  <Typography color="textSecondary" variant="body2" gutterBottom sx={{ fontFamily: 'monospace' }}>
                     {pod.name}
                   </Typography>
-                  <Typography variant="body2" sx={{ mt: 2 }}>
-                    <strong>Age:</strong> {pod.age}
-                  </Typography>
-                  <Typography variant="body2">
-                    <strong>Cost:</strong> €{pod.cost.toFixed(2)} / mo
-                  </Typography>
+                  <Box mt={3}>
+                    <Typography variant="body2" color="text.secondary">
+                      Age: {pod.age}
+                    </Typography>
+                    <Typography variant="body1" color="primary.main" fontWeight="bold" mt={0.5}>
+                      €{pod.cost.toFixed(2)} / mo
+                    </Typography>
+                  </Box>
                 </CardContent>
                 <CardActions sx={{ justifyContent: 'flex-end', px: 2, pb: 2 }}>
                   <Button 
@@ -166,10 +171,13 @@ function Dashboard() {
         </Grid>
 
         {pods.length === 0 && (
-          <Box textAlign="center" mt={10}>
+          <Box textAlign="center" mt={10} p={5} sx={{ border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 4 }}>
             <Typography variant="h6" color="textSecondary">
-              No services running. Click "New Service" to get started.
+              No services running yet.
             </Typography>
+            <Button variant="outlined" sx={{ mt: 2 }} onClick={() => setOpen(true)}>
+              Deploy your first service
+            </Button>
           </Box>
         )}
       </Container>

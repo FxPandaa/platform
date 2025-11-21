@@ -41,7 +41,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False, # Zet op False om CORS problemen met wildcard * te voorkomen
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -124,23 +124,31 @@ def get_namespace_name(company_name: str) -> str:
 
 @app.post("/register")
 def register(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.username == user.username).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Username already registered")
-    hashed_password = get_password_hash(user.password)
-    new_user = User(username=user.username, hashed_password=hashed_password, company_name=user.company_name)
-    db.add(new_user)
-    db.commit()
-    
-    # Maak direct een namespace voor dit bedrijf
-    ns_name = get_namespace_name(user.company_name)
     try:
-        ns_body = client.V1Namespace(metadata=client.V1ObjectMeta(name=ns_name))
-        v1.create_namespace(body=ns_body)
-    except client.exceptions.ApiException:
-        pass # Bestaat al
+        db_user = db.query(User).filter(User.username == user.username).first()
+        if db_user:
+            raise HTTPException(status_code=400, detail="Username already registered")
+        
+        hashed_password = get_password_hash(user.password)
+        new_user = User(username=user.username, hashed_password=hashed_password, company_name=user.company_name)
+        db.add(new_user)
+        db.commit()
+        
+        # Maak direct een namespace voor dit bedrijf
+        ns_name = get_namespace_name(user.company_name)
+        try:
+            ns_body = client.V1Namespace(metadata=client.V1ObjectMeta(name=ns_name))
+            v1.create_namespace(body=ns_body)
+        except client.exceptions.ApiException as e:
+            if e.status != 409: # 409 = Conflict (bestaat al), dat is ok. Andere errors niet.
+                print(f"Warning: Could not create namespace: {e}")
+        except Exception as e:
+            print(f"Warning: Generic error creating namespace: {e}")
 
-    return {"msg": "User created successfully"}
+        return {"msg": "User created successfully"}
+    except Exception as e:
+        print(f"Register Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/token")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
