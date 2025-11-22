@@ -215,11 +215,16 @@ def get_pods(current_user: User = Depends(get_current_user)):
                             service_ports[app_label] = port.node_port
                             break
 
+        print(f"Found {len(k8s_pods.items)} pods in namespace {ns_name}")
+        
         for p in k8s_pods.items:
             try:
+                print(f"Processing pod: {p.metadata.name}")
+                
                 # Protect against None labels
                 labels = p.metadata.labels or {}
                 app_type = labels.get("app", "unknown")
+                print(f"  App type: {app_type}, Labels: {labels}")
                 
                 # Cost calculation (strip random suffix to match price keys)
                 # app_type is like "nginx-1234", we want "nginx"
@@ -249,33 +254,41 @@ def get_pods(current_user: User = Depends(get_current_user)):
                 
                 # Group ID lookup
                 group_id = labels.get("service_group")
+                
+                # Safe field access
+                pod_ip = p.status.pod_ip if p.status.pod_ip else None
+                node_name = p.spec.node_name if p.spec.node_name else None
 
-                pods.append(PodInfo(
+                pod_info = PodInfo(
                     name=p.metadata.name,
                     status=p.status.phase,
                     cost=cost,
                     type=app_type,
                     age=age,
-                    pod_ip=p.status.pod_ip,
-                    node_name=p.spec.node_name,
+                    pod_ip=pod_ip,
+                    node_name=node_name,
                     public_ip=public_ip,
                     node_port=node_port,
                     external_url=external_url,
                     group_id=group_id
-                ))
+                )
+                pods.append(pod_info)
+                print(f"  Successfully added pod {p.metadata.name}")
+                
             except Exception as e:
-                print(f"Skipping pod {p.metadata.name} due to error: {e}")
+                print(f"ERROR: Skipping pod {p.metadata.name} due to error: {e}")
                 import traceback
                 traceback.print_exc()
                 continue
 
     except Exception as e:
-        print(f"Error in get_pods: {e}")
+        print(f"CRITICAL ERROR in get_pods: {e}")
         import traceback
         traceback.print_exc()
         # Return what we have so far instead of crashing
         pass
-        
+    
+    print(f"Returning {len(pods)} pods to frontend")
     return pods
 
 def get_safe_label(text: str) -> str:

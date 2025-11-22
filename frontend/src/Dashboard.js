@@ -49,6 +49,8 @@ function Dashboard() {
       const response = await axios.get(`${BACKEND_URL}/pods`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      console.log("Received pods from backend:", response.data);
+      console.log("Total pods received:", response.data.length);
       setPods(response.data);
     } catch (error) {
       console.error("Error fetching pods:", error);
@@ -172,6 +174,10 @@ function Dashboard() {
     if (tabValue === 3) return cat === 'monitor';
     return true;
   });
+  
+  console.log("Total pods:", pods.length);
+  console.log("Filtered pods (tab " + tabValue + "):", filteredPods.length);
+  console.log("Pod types:", pods.map(p => p.type));
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: 'background.default' }}>
