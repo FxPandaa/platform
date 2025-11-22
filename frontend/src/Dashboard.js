@@ -37,6 +37,7 @@ function Dashboard() {
   const [logsOpen, setLogsOpen] = useState(false);
   const [currentLogs, setCurrentLogs] = useState('');
   const [logPodName, setLogPodName] = useState('');
+  const [tabValue, setTabValue] = useState(0);
   const navigate = useNavigate();
   const company = localStorage.getItem('company');
 
@@ -152,6 +153,24 @@ function Dashboard() {
     return pods.reduce((total, pod) => total + (pod.cost || 0), 0).toFixed(2);
   };
 
+  const getCategory = (type) => {
+    if (!type) return 'other';
+    const t = type.toLowerCase();
+    if (t.startsWith('nginx') || t.startsWith('wordpress') || t.startsWith('custom')) return 'web';
+    if (t.startsWith('postgres') || t.startsWith('mysql') || t.startsWith('redis')) return 'db';
+    if (t.startsWith('uptime-kuma')) return 'monitor';
+    return 'other';
+  };
+
+  const filteredPods = pods.filter(pod => {
+    const cat = getCategory(pod.type);
+    if (tabValue === 0) return true;
+    if (tabValue === 1) return cat === 'web';
+    if (tabValue === 2) return cat === 'db';
+    if (tabValue === 3) return cat === 'monitor';
+    return true;
+  });
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: 'background.default' }}>
       <AppBar position="static" elevation={0} sx={{ bgcolor: 'background.paper', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
@@ -192,7 +211,7 @@ function Dashboard() {
         </Box>
 
         <Grid container spacing={3}>
-          {pods.map((pod) => (
+          {filteredPods.map((pod) => (
             <Grid item xs={12} sm={6} md={4} key={pod.name}>
               <Card elevation={0} sx={{ bgcolor: 'background.paper', border: '1px solid rgba(255,255,255,0.1)' }}>
                 <CardContent>

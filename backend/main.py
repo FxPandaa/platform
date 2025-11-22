@@ -215,8 +215,14 @@ def get_pods(current_user: User = Depends(get_current_user)):
                             break
 
         for p in k8s_pods.items:
-            app_type = p.metadata.labels.get("app", "unknown")
-            cost = prices.get(app_type, 20.00)
+            # Protect against None labels
+            labels = p.metadata.labels or {}
+            app_type = labels.get("app", "unknown")
+            
+            # Cost calculation (strip random suffix to match price keys)
+            # app_type is like "nginx-1234", we want "nginx"
+            base_type = app_type.split('-')[0] if '-' in app_type else app_type
+            cost = prices.get(base_type, 20.00)
             
             # Bereken leeftijd
             start_time = p.status.start_time
@@ -251,8 +257,10 @@ def get_pods(current_user: User = Depends(get_current_user)):
                 node_port=node_port,
                 external_url=external_url
             ))
-    except client.exceptions.ApiException:
-        pass # Namespace bestaat misschien nog niet of is leeg
+    except Exception as e:
+        print(f"Error in get_pods: {e}")
+        # Return empty list instead of crashing, so frontend doesn't break completely
+        return []
         
     return pods
 
