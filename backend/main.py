@@ -117,12 +117,12 @@ class PodInfo(BaseModel):
     cost: float
     type: str
     age: str
-    message: str = None
-    pod_ip: str = None
-    node_name: str = None
-    external_url: str = None # Nieuw veld voor externe toegang
-    public_ip: str = None
-    node_port: int = None
+    message: Optional[str] = None
+    pod_ip: Optional[str] = None
+    node_name: Optional[str] = None
+    external_url: Optional[str] = None # Nieuw veld voor externe toegang
+    public_ip: Optional[str] = None
+    node_port: Optional[int] = None
     group_id: Optional[str] = None # ID om gerelateerde services te linken (bijv. WP + MySQL)
 
 # --- ENDPOINTS ---
