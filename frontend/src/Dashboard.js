@@ -297,6 +297,8 @@ function Dashboard() {
               onChange={(e) => setServiceType(e.target.value)}
             >
               <MenuItem value="nginx">Nginx Web Server</MenuItem>
+              <MenuItem value="wordpress">WordPress (Website + DB)</MenuItem>
+              <MenuItem value="uptime-kuma">Uptime Kuma (Monitoring)</MenuItem>
               <MenuItem value="postgres">PostgreSQL Database</MenuItem>
               <MenuItem value="redis">Redis Cache</MenuItem>
               <MenuItem value="custom">Custom Docker Image</MenuItem>

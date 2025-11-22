@@ -37,6 +37,7 @@ except config.ConfigException:
 
 v1 = client.CoreV1Api()
 apps_v1 = client.AppsV1Api()
+networking_v1 = client.NetworkingV1Api()
 
 app = FastAPI()
 
@@ -248,11 +249,145 @@ def get_safe_label(text: str) -> str:
     # Labels mogen geen spaties bevatten, alleen a-z, 0-9, -, _, .
     return re.sub(r'[^a-zA-Z0-9\-\_\.]', '-', text)
 
+def create_ingress(ns_name: str, service_name: str, port: int, host: str):
+    ingress = client.V1Ingress(
+        api_version="networking.k8s.io/v1",
+        kind="Ingress",
+        metadata=client.V1ObjectMeta(name=f"{service_name}-ingress", annotations={
+            "kubernetes.io/ingress.class": "traefik"
+        }),
+        spec=client.V1IngressSpec(
+            rules=[
+                client.V1IngressRule(
+                    host=host,
+                    http=client.V1HTTPIngressRuleValue(
+                        paths=[
+                            client.V1HTTPIngressPath(
+                                path="/",
+                                path_type="Prefix",
+                                backend=client.V1IngressBackend(
+                                    service=client.V1IngressServiceBackend(
+                                        name=service_name,
+                                        port=client.V1ServiceBackendPort(number=port)
+                                    )
+                                )
+                            )
+                        ]
+                    )
+                )
+            ]
+        )
+    )
+    try:
+        networking_v1.create_namespaced_ingress(namespace=ns_name, body=ingress)
+    except client.exceptions.ApiException as e:
+        print(f"Warning: Could not create ingress: {e}")
+
 @app.post("/pods")
 def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
     print(f"Received create_pod request: {pod}") # Debug log
     ns_name = get_namespace_name(current_user.company_name)
     pod_name = f"{pod.service_type}-{random.randint(1000,9999)}"
+    safe_owner = get_safe_label(current_user.username)
+    
+    # --- MARKETPLACE LOGIC ---
+    
+    if pod.service_type == "wordpress":
+        # 1. MySQL Deployment
+        mysql_name = f"mysql-{random.randint(1000,9999)}"
+        mysql_labels = {"app": mysql_name, "owner": safe_owner}
+        mysql_env = [
+            client.V1EnvVar(name="MYSQL_ROOT_PASSWORD", value="secret"),
+            client.V1EnvVar(name="MYSQL_DATABASE", value="wordpress"),
+            client.V1EnvVar(name="MYSQL_USER", value="wordpress"),
+            client.V1EnvVar(name="MYSQL_PASSWORD", value="wordpress")
+        ]
+        
+        mysql_container = client.V1Container(
+            name="mysql",
+            image="mysql:5.7",
+            ports=[client.V1ContainerPort(container_port=3306)],
+            env=mysql_env
+        )
+        
+        mysql_deployment = client.V1Deployment(
+            api_version="apps/v1",
+            kind="Deployment",
+            metadata=client.V1ObjectMeta(name=mysql_name, labels=mysql_labels),
+            spec=client.V1DeploymentSpec(
+                replicas=1,
+                selector=client.V1LabelSelector(match_labels=mysql_labels),
+                template=client.V1PodTemplateSpec(
+                    metadata=client.V1ObjectMeta(labels=mysql_labels),
+                    spec=client.V1PodSpec(containers=[mysql_container])
+                )
+            )
+        )
+        apps_v1.create_namespaced_deployment(namespace=ns_name, body=mysql_deployment)
+        
+        # MySQL Service (ClusterIP is genoeg voor interne communicatie, maar we doen NodePort voor consistentie)
+        mysql_service = client.V1Service(
+            api_version="v1",
+            kind="Service",
+            metadata=client.V1ObjectMeta(name=mysql_name),
+            spec=client.V1ServiceSpec(
+                selector={"app": mysql_name},
+                ports=[client.V1ServicePort(port=3306, target_port=3306)]
+            )
+        )
+        v1.create_namespaced_service(namespace=ns_name, body=mysql_service)
+        
+        # 2. WordPress Deployment
+        wp_labels = {"app": pod_name, "owner": safe_owner}
+        wp_env = [
+            client.V1EnvVar(name="WORDPRESS_DB_HOST", value=mysql_name),
+            client.V1EnvVar(name="WORDPRESS_DB_USER", value="wordpress"),
+            client.V1EnvVar(name="WORDPRESS_DB_PASSWORD", value="wordpress"),
+            client.V1EnvVar(name="WORDPRESS_DB_NAME", value="wordpress")
+        ]
+        
+        wp_container = client.V1Container(
+            name="wordpress",
+            image="wordpress:latest",
+            ports=[client.V1ContainerPort(container_port=80)],
+            env=wp_env
+        )
+        
+        wp_deployment = client.V1Deployment(
+            api_version="apps/v1",
+            kind="Deployment",
+            metadata=client.V1ObjectMeta(name=pod_name, labels=wp_labels),
+            spec=client.V1DeploymentSpec(
+                replicas=1,
+                selector=client.V1LabelSelector(match_labels=wp_labels),
+                template=client.V1PodTemplateSpec(
+                    metadata=client.V1ObjectMeta(labels=wp_labels),
+                    spec=client.V1PodSpec(containers=[wp_container])
+                )
+            )
+        )
+        apps_v1.create_namespaced_deployment(namespace=ns_name, body=wp_deployment)
+        
+        # WordPress Service
+        wp_service = client.V1Service(
+            api_version="v1",
+            kind="Service",
+            metadata=client.V1ObjectMeta(name=f"{pod_name}-svc"),
+            spec=client.V1ServiceSpec(
+                selector={"app": pod_name},
+                type="NodePort",
+                ports=[client.V1ServicePort(port=80, target_port=80)]
+            )
+        )
+        v1.create_namespaced_service(namespace=ns_name, body=wp_service)
+        
+        # Ingress
+        host = f"{pod_name}.{ns_name}.192.168.154.114.sslip.io"
+        create_ingress(ns_name, f"{pod_name}-svc", 80, host)
+        
+        return {"message": f"WordPress site {pod_name} created successfully"}
+
+    # --- STANDARD LOGIC ---
     
     # Image selectie
     if pod.service_type == "custom":
@@ -265,7 +400,8 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
         image_map = {
             "nginx": "nginx:latest",
             "postgres": "postgres:13",
-            "redis": "redis:alpine"
+            "redis": "redis:alpine",
+            "uptime-kuma": "louislam/uptime-kuma:1"
         }
         image = image_map.get(pod.service_type, "nginx:latest")
 
@@ -278,6 +414,7 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
         env_vars.append(client.V1EnvVar(name="POSTGRES_PASSWORD", value="mysecretpassword"))
         
     if pod.service_type == "redis": target_port = 6379
+    if pod.service_type == "uptime-kuma": target_port = 3001
     
     container = client.V1Container(
         name=pod.service_type if pod.service_type != "custom" else "app",
@@ -285,9 +422,7 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
         ports=[client.V1ContainerPort(container_port=target_port)],
         env=env_vars
     )
-    # Voeg owner label toe zodat we weten van wie hij is
-    # BELANGRIJK: Sanitize labels!
-    safe_owner = get_safe_label(current_user.username)
+    
     labels = {"app": pod_name, "owner": safe_owner} # Gebruik pod_name als app label voor unieke service mapping
     
     template = client.V1PodTemplateSpec(
@@ -324,6 +459,10 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
             )
         )
         v1.create_namespaced_service(namespace=ns_name, body=service)
+        
+        # Maak Ingress aan
+        host = f"{pod_name}.{ns_name}.192.168.154.114.sslip.io"
+        create_ingress(ns_name, f"{pod_name}-svc", target_port, host)
         
         return {"message": f"Pod {pod_name} created successfully"}
     except client.exceptions.ApiException as e:
@@ -433,13 +572,17 @@ def get_my_deployments(current_user: User = Depends(get_current_user)):
             
             # Haal Service info op voor NodePort
             try:
-                svc = v1.read_namespaced_service(name=d.metadata.name, namespace=ns_name)
-                if svc.spec.ports:
-                    node_port = svc.spec.ports[0].node_port
-                    # We gebruiken het IP van de master node (of waar de user op zit)
-                    # In een echte cloud zou je hier de LoadBalancer IP pakken.
-                    # Voor nu hardcoden we het IP van de VM die de user gebruikt.
-                    external_url = f"http://192.168.154.114:{node_port}"
+                svc = v1.read_namespaced_service(name=d.metadata.name + "-svc", namespace=ns_name)
+                # Probeer Ingress te vinden
+                try:
+                    ing = networking_v1.read_namespaced_ingress(name=d.metadata.name + "-svc-ingress", namespace=ns_name)
+                    if ing.spec.rules:
+                        external_url = f"http://{ing.spec.rules[0].host}"
+                except:
+                    # Fallback naar NodePort als Ingress niet bestaat
+                    if svc.spec.ports:
+                        node_port = svc.spec.ports[0].node_port
+                        external_url = f"http://192.168.154.114:{node_port}"
             except:
                 pass
 
