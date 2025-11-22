@@ -133,6 +133,37 @@ def get_namespace_name(company_name: str) -> str:
     clean_name = re.sub(r'[^a-z0-9\-]', '', clean_name)
     return f"org-{clean_name}"
 
+def ensure_regcred_in_namespace(ns_name: str):
+    """Ensure regcred secret exists in the given namespace by copying from admin-platform"""
+    try:
+        # Check if secret already exists
+        v1.read_namespaced_secret("regcred", ns_name)
+        print(f"✓ regcred already exists in {ns_name}")
+        return True
+    except client.exceptions.ApiException as e:
+        if e.status == 404:
+            # Secret doesn't exist, copy it
+            print(f"⚠ regcred not found in {ns_name}, copying from admin-platform...")
+            try:
+                secret = v1.read_namespaced_secret("regcred", "admin-platform")
+                secret.metadata.namespace = ns_name
+                secret.metadata.resource_version = None
+                secret.metadata.uid = None
+                secret.metadata.creation_timestamp = None
+                secret.metadata.owner_references = None
+                v1.create_namespaced_secret(namespace=ns_name, body=secret)
+                print(f"✓ Successfully copied regcred to {ns_name}")
+                return True
+            except Exception as copy_error:
+                print(f"✗ Failed to copy regcred: {copy_error}")
+                return False
+        else:
+            print(f"✗ Error checking regcred: {e}")
+            return False
+    except Exception as e:
+        print(f"✗ Unexpected error with regcred: {e}")
+        return False
+
 @app.post("/register")
 def register(user: UserCreate, db: Session = Depends(get_db)):
     try:
@@ -188,6 +219,11 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     user = db.query(User).filter(User.username == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=400, detail="Incorrect username or password")
+    
+    # Ensure regcred exists in user's namespace (fix for existing namespaces)
+    ns_name = get_namespace_name(user.company_name)
+    ensure_regcred_in_namespace(ns_name)
+    
     access_token = create_access_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer", "company": user.company_name}
 
@@ -356,34 +392,9 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
     # --- MARKETPLACE LOGIC ---
     
     # Ensure regcred exists in user namespace (copy from admin-platform if missing)
-    print(f"[CREATE POD] Checking regcred in {ns_name}...")
-    try:
-        try:
-            v1.read_namespaced_secret("regcred", ns_name)
-            print(f"✓ regcred already exists in {ns_name}")
-        except client.exceptions.ApiException as e:
-            if e.status == 404:
-                print(f"⚠ regcred not found in {ns_name}, copying from admin-platform...")
-                try:
-                    secret = v1.read_namespaced_secret("regcred", "admin-platform")
-                    secret.metadata.namespace = ns_name
-                    secret.metadata.resource_version = None
-                    secret.metadata.uid = None
-                    secret.metadata.creation_timestamp = None
-                    secret.metadata.owner_references = None
-                    v1.create_namespaced_secret(namespace=ns_name, body=secret)
-                    print(f"✓ Successfully copied regcred to {ns_name}")
-                except Exception as copy_error:
-                    print(f"❌ Failed to copy regcred: {copy_error}")
-                    raise HTTPException(status_code=500, detail=f"Failed to copy Docker credentials. Please ensure regcred exists in admin-platform namespace.")
-            else:
-                print(f"❌ Unexpected error reading regcred: {e}")
-                raise
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ Critical error with regcred: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to configure Docker credentials: {e}")
+    print(f"[CREATE POD] Ensuring regcred in {ns_name}...")
+    if not ensure_regcred_in_namespace(ns_name):
+        raise HTTPException(status_code=500, detail="Failed to configure Docker Hub credentials. Please contact administrator.")
 
     if pod.service_type == "wordpress":
         # Generate Group ID for linking services
