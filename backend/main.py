@@ -196,6 +196,8 @@ def get_pods(current_user: User = Depends(get_current_user)):
     ns_name = get_namespace_name(current_user.company_name)
     pods = []
     
+    print(f"[GET /pods] Fetching pods for namespace: {ns_name}")
+    
     # Prijzen tabel
     prices = {"nginx": 5.00, "postgres": 15.00, "redis": 10.00, "custom": 20.00, "wordpress": 20.00, "mysql": 10.00, "uptime": 10.00}
 
@@ -354,21 +356,34 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
     # --- MARKETPLACE LOGIC ---
     
     # Ensure regcred exists in user namespace (copy from admin-platform if missing)
+    print(f"[CREATE POD] Checking regcred in {ns_name}...")
     try:
         try:
             v1.read_namespaced_secret("regcred", ns_name)
+            print(f"✓ regcred already exists in {ns_name}")
         except client.exceptions.ApiException as e:
             if e.status == 404:
-                secret = v1.read_namespaced_secret("regcred", "admin-platform")
-                secret.metadata.namespace = ns_name
-                secret.metadata.resource_version = None
-                secret.metadata.uid = None
-                secret.metadata.creation_timestamp = None
-                secret.metadata.owner_references = None
-                v1.create_namespaced_secret(namespace=ns_name, body=secret)
-                print(f"Copied regcred to {ns_name} during pod creation")
+                print(f"⚠ regcred not found in {ns_name}, copying from admin-platform...")
+                try:
+                    secret = v1.read_namespaced_secret("regcred", "admin-platform")
+                    secret.metadata.namespace = ns_name
+                    secret.metadata.resource_version = None
+                    secret.metadata.uid = None
+                    secret.metadata.creation_timestamp = None
+                    secret.metadata.owner_references = None
+                    v1.create_namespaced_secret(namespace=ns_name, body=secret)
+                    print(f"✓ Successfully copied regcred to {ns_name}")
+                except Exception as copy_error:
+                    print(f"❌ Failed to copy regcred: {copy_error}")
+                    raise HTTPException(status_code=500, detail=f"Failed to copy Docker credentials. Please ensure regcred exists in admin-platform namespace.")
+            else:
+                print(f"❌ Unexpected error reading regcred: {e}")
+                raise
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Warning: Could not copy regcred secret: {e}")
+        print(f"❌ Critical error with regcred: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to configure Docker credentials: {e}")
 
     if pod.service_type == "wordpress":
         # Generate Group ID for linking services
