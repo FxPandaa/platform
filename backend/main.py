@@ -399,6 +399,15 @@ def delete_pod(pod_name: str, current_user: User = Depends(get_current_user)):
         
     return {"status": "deleted"}
 
+@app.get("/pods/{pod_name}/logs")
+def get_pod_logs(pod_name: str, current_user: User = Depends(get_current_user)):
+    ns_name = get_namespace_name(current_user.company_name)
+    try:
+        logs = v1.read_namespaced_pod_log(name=pod_name, namespace=ns_name, tail_lines=100)
+        return {"logs": logs}
+    except client.exceptions.ApiException as e:
+        raise HTTPException(status_code=404, detail="Logs not found")
+
 @app.get("/my-deployments", response_model=list[PodInfo])
 def get_my_deployments(current_user: User = Depends(get_current_user)):
     ns_name = get_namespace_name(current_user.company_name)
