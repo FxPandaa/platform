@@ -277,25 +277,12 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
         env_vars.append(client.V1EnvVar(name="POSTGRES_PASSWORD", value="mysecretpassword"))
         
     if pod.service_type == "redis": target_port = 6379
-
-    # Resource limits
-    resources = client.V1ResourceRequirements()
-    if pod.size == "small":
-        resources.requests = {"cpu": "100m", "memory": "128Mi"}
-        resources.limits = {"cpu": "200m", "memory": "256Mi"}
-    elif pod.size == "medium":
-        resources.requests = {"cpu": "500m", "memory": "512Mi"}
-        resources.limits = {"cpu": "1000m", "memory": "1Gi"}
-    elif pod.size == "large":
-        resources.requests = {"cpu": "1000m", "memory": "1Gi"}
-        resources.limits = {"cpu": "2000m", "memory": "2Gi"}
     
     container = client.V1Container(
         name=pod.service_type if pod.service_type != "custom" else "app",
         image=image,
         ports=[client.V1ContainerPort(container_port=target_port)],
-        env=env_vars,
-        resources=resources
+        env=env_vars
     )
     # Voeg owner label toe zodat we weten van wie hij is
     # BELANGRIJK: Sanitize labels!
