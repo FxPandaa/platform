@@ -438,7 +438,7 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
         v1.create_namespaced_service(namespace=ns_name, body=wp_service)
         
         # Ingress for professional domain
-        host = f"{ns_name}.192.168.154.114.sslip.io"
+        host = f"{pod_name}.{ns_name}.192.168.154.114.sslip.io"
         create_ingress(ns_name, f"{pod_name}-svc", 80, host)
         
         return {"message": f"WordPress site {pod_name} created successfully"}
@@ -524,7 +524,7 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
         
         # Create Ingress for professional domain (except for databases)
         if pod.service_type not in ["postgres", "redis", "mysql"]:
-            host = f"{ns_name}.192.168.154.114.sslip.io"
+            host = f"{pod_name}.{ns_name}.192.168.154.114.sslip.io"
             create_ingress(ns_name, f"{pod_name}-svc", target_port, host)
         
         return {"message": f"Pod {pod_name} created successfully"}

@@ -160,7 +160,8 @@ function Dashboard() {
   const getCategory = (type) => {
     if (!type) return 'other';
     const t = type.toLowerCase();
-    if (t.startsWith('nginx') || t.startsWith('wordpress') || t.startsWith('custom')) return 'web';
+    if (t.startsWith('wordpress')) return 'app';
+    if (t.startsWith('nginx') || t.startsWith('custom')) return 'single';
     if (t.startsWith('postgres') || t.startsWith('mysql') || t.startsWith('redis')) return 'db';
     if (t.startsWith('uptime-kuma')) return 'monitor';
     return 'other';
@@ -169,9 +170,10 @@ function Dashboard() {
   const filteredPods = pods.filter(pod => {
     const cat = getCategory(pod.type);
     if (tabValue === 0) return true;
-    if (tabValue === 1) return cat === 'web';
-    if (tabValue === 2) return cat === 'db';
-    if (tabValue === 3) return cat === 'monitor';
+    if (tabValue === 1) return cat === 'app';
+    if (tabValue === 2) return cat === 'single';
+    if (tabValue === 3) return cat === 'db';
+    if (tabValue === 4) return cat === 'monitor';
     return true;
   });
   
@@ -220,7 +222,8 @@ function Dashboard() {
 
         <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
           <Tab label="All Services" />
-          <Tab label="Applications" />
+          <Tab label="Bundles (WP)" />
+          <Tab label="Single Services" />
           <Tab label="Databases" />
           <Tab label="Monitoring" />
         </Tabs>
