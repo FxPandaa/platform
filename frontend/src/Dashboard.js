@@ -34,7 +34,6 @@ function Dashboard() {
   const [open, setOpen] = useState(false);
   const [serviceType, setServiceType] = useState('nginx');
   const [customImage, setCustomImage] = useState('');
-  const [podSize, setPodSize] = useState('small');
   const [logsOpen, setLogsOpen] = useState(false);
   const [currentLogs, setCurrentLogs] = useState('');
   const [logPodName, setLogPodName] = useState('');
@@ -71,13 +70,12 @@ function Dashboard() {
   const handleCreate = async () => {
     try {
       const token = localStorage.getItem('token');
-      console.log("Sending pod create request:", { service_type: serviceType, custom_image: customImage, size: podSize });
+      console.log("Sending pod create request:", { service_type: serviceType, custom_image: customImage });
       
       await axios.post(`${BACKEND_URL}/pods`, 
         { 
           service_type: serviceType,
-          custom_image: serviceType === 'custom' ? customImage : null,
-          size: podSize
+          custom_image: serviceType === 'custom' ? customImage : null
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -302,19 +300,6 @@ function Dashboard() {
               <MenuItem value="postgres">PostgreSQL Database</MenuItem>
               <MenuItem value="redis">Redis Cache</MenuItem>
               <MenuItem value="custom">Custom Docker Image</MenuItem>
-            </Select>
-          </FormControl>
-
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Size</InputLabel>
-            <Select
-              value={podSize}
-              label="Size"
-              onChange={(e) => setPodSize(e.target.value)}
-            >
-              <MenuItem value="small">Small (0.1 CPU, 128MB)</MenuItem>
-              <MenuItem value="medium">Medium (0.5 CPU, 512MB)</MenuItem>
-              <MenuItem value="large">Large (1.0 CPU, 1GB)</MenuItem>
             </Select>
           </FormControl>
 

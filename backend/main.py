@@ -109,7 +109,6 @@ class UserCreate(BaseModel):
 class PodCreate(BaseModel):
     service_type: str # nginx, postgres, redis, custom
     custom_image: Optional[str] = None # Optioneel, voor als service_type 'custom' is
-    size: str = "small" # small, medium, large
 
 class PodInfo(BaseModel):
     name: str
@@ -190,19 +189,33 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     access_token = create_access_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer", "company": user.company_name}
 
-@app.get("/my-pods", response_model=list[PodInfo])
-def get_my_pods(current_user: User = Depends(get_current_user)):
+@app.get("/pods", response_model=list[PodInfo])
+def get_pods(current_user: User = Depends(get_current_user)):
     ns_name = get_namespace_name(current_user.company_name)
     pods = []
     
     # Prijzen tabel
-    prices = {"nginx": 5.00, "postgres": 15.00, "redis": 10.00}
+    prices = {"nginx": 5.00, "postgres": 15.00, "redis": 10.00, "custom": 20.00}
 
     try:
-        k8s_pods = v1.list_namespaced_pod(namespace=ns_name, label_selector=f"owner={current_user.username}")
+        # Haal alle pods in de namespace op (geen owner filter)
+        k8s_pods = v1.list_namespaced_pod(namespace=ns_name)
+        k8s_services = v1.list_namespaced_service(namespace=ns_name)
+        
+        # Map services to node ports
+        service_ports = {}
+        for svc in k8s_services.items:
+            if svc.spec.selector and 'app' in svc.spec.selector:
+                app_label = svc.spec.selector['app']
+                if svc.spec.ports:
+                    for port in svc.spec.ports:
+                        if port.node_port:
+                            service_ports[app_label] = port.node_port
+                            break
+
         for p in k8s_pods.items:
             app_type = p.metadata.labels.get("app", "unknown")
-            cost = prices.get(app_type, 0.0)
+            cost = prices.get(app_type, 20.00)
             
             # Bereken leeftijd
             start_time = p.status.start_time
@@ -210,12 +223,20 @@ def get_my_pods(current_user: User = Depends(get_current_user)):
             if start_time:
                 age = str(datetime.now(start_time.tzinfo) - start_time).split('.')[0]
 
+            # NodePort & IP
+            node_port = service_ports.get(p.metadata.name)
+            public_ip = p.status.host_ip if p.status.host_ip else "Pending"
+
             pods.append(PodInfo(
                 name=p.metadata.name,
                 status=p.status.phase,
                 cost=cost,
                 type=app_type,
-                age=age
+                age=age,
+                pod_ip=p.status.pod_ip,
+                node_name=p.spec.node_name,
+                public_ip=public_ip,
+                node_port=node_port
             ))
     except client.exceptions.ApiException:
         pass # Namespace bestaat misschien nog niet of is leeg
