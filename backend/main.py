@@ -225,6 +225,7 @@ def get_safe_label(text: str) -> str:
 
 @app.post("/pods")
 def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
+    print(f"Received create_pod request: {pod}") # Debug log
     ns_name = get_namespace_name(current_user.company_name)
     pod_name = f"{pod.service_type}-{random.randint(1000,9999)}"
     

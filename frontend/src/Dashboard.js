@@ -66,6 +66,8 @@ function Dashboard() {
   const handleCreate = async () => {
     try {
       const token = localStorage.getItem('token');
+      console.log("Sending pod create request:", { service_type: serviceType, custom_image: customImage });
+      
       await axios.post(`${BACKEND_URL}/pods`, 
         { 
           service_type: serviceType,
@@ -76,13 +78,27 @@ function Dashboard() {
       setOpen(false);
       fetchPods();
     } catch (error) {
-      console.error(error);
-      let errorMsg = error.message;
-      if (error.response?.data?.detail) {
-        const detail = error.response.data.detail;
-        errorMsg = typeof detail === 'object' ? JSON.stringify(detail) : detail;
+      console.error("Create Pod Error:", error);
+      let errorMsg = "Unknown error";
+      
+      if (error.response) {
+        // Server reageerde met een status code buiten de 2xx range
+        if (error.response.data && error.response.data.detail) {
+           const detail = error.response.data.detail;
+           // Als detail een object/array is (zoals bij validatie errors), maak er string van
+           errorMsg = typeof detail === 'object' ? JSON.stringify(detail, null, 2) : detail;
+        } else {
+           errorMsg = `Status: ${error.response.status} - ${error.response.statusText}`;
+        }
+      } else if (error.request) {
+        // Request is verstuurd maar geen response ontvangen
+        errorMsg = "No response from server. Check if backend is running.";
+      } else {
+        // Iets anders ging mis
+        errorMsg = error.message;
       }
-      alert(`Failed to create pod: ${errorMsg}`);
+      
+      alert(`Failed to create pod:\n${errorMsg}`);
     }
   };
 
