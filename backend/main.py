@@ -109,6 +109,7 @@ class UserCreate(BaseModel):
 class PodCreate(BaseModel):
     service_type: str # nginx, postgres, redis, custom
     custom_image: Optional[str] = None # Optioneel, voor als service_type 'custom' is
+    size: str = "small" # small, medium, large
 
 class PodInfo(BaseModel):
     name: str
@@ -120,6 +121,8 @@ class PodInfo(BaseModel):
     pod_ip: str = None
     node_name: str = None
     external_url: str = None # Nieuw veld voor externe toegang
+    public_ip: str = None
+    node_port: int = None
 
 # --- ENDPOINTS ---
 

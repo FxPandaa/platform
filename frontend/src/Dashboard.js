@@ -24,7 +24,7 @@ import {
   TextField,
   Alert
 } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon, Refresh as RefreshIcon, Logout as LogoutIcon } from '@mui/icons-material';
+import { Add as AddIcon, Delete as DeleteIcon, Refresh as RefreshIcon, Logout as LogoutIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
 import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://192.168.154.114:30001";
@@ -34,18 +34,23 @@ function Dashboard() {
   const [open, setOpen] = useState(false);
   const [serviceType, setServiceType] = useState('nginx');
   const [customImage, setCustomImage] = useState('');
+  const [podSize, setPodSize] = useState('small');
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [currentLogs, setCurrentLogs] = useState('');
+  const [logPodName, setLogPodName] = useState('');
   const navigate = useNavigate();
   const company = localStorage.getItem('company');
 
   const fetchPods = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${BACKEND_URL}/my-deployments`, {
+      const response = await axios.get(`${BACKEND_URL}/pods`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setPods(response.data);
     } catch (error) {
-      if (error.response?.status === 401) {
+      console.error("Error fetching pods:", error);
+      if (error.response && error.response.status === 401) {
         handleLogout();
       }
     }
@@ -66,12 +71,13 @@ function Dashboard() {
   const handleCreate = async () => {
     try {
       const token = localStorage.getItem('token');
-      console.log("Sending pod create request:", { service_type: serviceType, custom_image: customImage });
+      console.log("Sending pod create request:", { service_type: serviceType, custom_image: customImage, size: podSize });
       
       await axios.post(`${BACKEND_URL}/pods`, 
         { 
           service_type: serviceType,
-          custom_image: serviceType === 'custom' ? customImage : null
+          custom_image: serviceType === 'custom' ? customImage : null,
+          size: podSize
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -129,12 +135,27 @@ function Dashboard() {
     }
   };
 
+  const handleViewLogs = async (podName) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${BACKEND_URL}/pods/${podName}/logs`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setCurrentLogs(response.data.logs);
+      setLogPodName(podName);
+      setLogsOpen(true);
+    } catch (error) {
+      console.error(error);
+      alert("Failed to fetch logs");
+    }
+  };
+
   const calculateTotalCost = () => {
-    return pods.reduce((acc, pod) => acc + pod.cost, 0).toFixed(2);
+    return pods.reduce((total, pod) => total + (pod.cost || 0), 0).toFixed(2);
   };
 
   return (
-    <Box sx={{ flexGrow: 1, minHeight: '100vh', bgcolor: 'background.default' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: 'background.default' }}>
       <AppBar position="static" elevation={0} sx={{ bgcolor: 'background.paper', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
         <Toolbar>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 'bold', color: 'primary.main' }}>
@@ -191,7 +212,7 @@ function Dashboard() {
                   <Typography color="textSecondary" variant="body2" gutterBottom sx={{ fontFamily: 'monospace' }}>
                     {pod.name}
                   </Typography>
-                  <Box mt={3}>
+                  <Box sx={{ mt: 2, mb: 2 }}>
                     <Typography variant="body2" color="text.secondary">
                       Age: {pod.age}
                     </Typography>
@@ -199,23 +220,39 @@ function Dashboard() {
                       Node: {pod.node_name || 'Pending'}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      IP: {pod.pod_ip || 'Pending'}
+                      IP: {pod.public_ip}
                     </Typography>
-                    {pod.external_url && (
-                      <Box mt={1}>
-                        <Button 
-                          variant="outlined" 
-                          size="small" 
-                          href={pod.external_url} 
-                          target="_blank"
-                          fullWidth
-                          sx={{ textTransform: 'none' }}
-                        >
-                          Open Service ↗
-                        </Button>
-                      </Box>
+                    {pod.node_port && (
+                       <Typography variant="body2" sx={{ color: 'primary.main', fontWeight: 'bold' }}>
+                         Port: {pod.node_port}
+                       </Typography>
                     )}
-                    {pod.message && (
+                  </Box>
+
+                  {pod.node_port && (
+                    <Button 
+                      variant="outlined" 
+                      fullWidth 
+                      size="small"
+                      href={`http://${pod.public_ip}:${pod.node_port}`}
+                      target="_blank"
+                      sx={{ mb: 1, borderColor: 'rgba(255,255,255,0.2)', color: 'primary.main' }}
+                    >
+                      Open Service ↗
+                    </Button>
+                  )}
+
+                  <Button 
+                      variant="outlined" 
+                      fullWidth 
+                      size="small"
+                      onClick={() => handleViewLogs(pod.name)}
+                      sx={{ mb: 2, borderColor: 'rgba(255,255,255,0.2)', color: 'text.secondary' }}
+                    >
+                      View Logs
+                  </Button>
+
+                  {pod.message && (
                       <Alert severity={pod.message.includes('Healthy') ? 'success' : 'error'} sx={{ mt: 1, py: 0.5, fontSize: '0.8rem' }}>
                         {pod.message.length > 50 ? pod.message.substring(0, 50) + '...' : pod.message}
                       </Alert>
@@ -223,7 +260,6 @@ function Dashboard() {
                     <Typography variant="body1" color="primary.main" fontWeight="bold" mt={1}>
                       €{pod.cost.toFixed(2)} / mo
                     </Typography>
-                  </Box>
                 </CardContent>
                 <CardActions sx={{ justifyContent: 'flex-end', px: 2, pb: 2 }}>
                   <Button 
@@ -255,17 +291,30 @@ function Dashboard() {
       <Dialog open={open} onClose={() => setOpen(false)}>
         <DialogTitle>Deploy New Service</DialogTitle>
         <DialogContent sx={{ minWidth: 300, pt: 2 }}>
-          <FormControl fullWidth margin="dense">
+          <FormControl fullWidth margin="normal">
             <InputLabel>Service Type</InputLabel>
             <Select
               value={serviceType}
               label="Service Type"
               onChange={(e) => setServiceType(e.target.value)}
             >
-              <MenuItem value="nginx">Nginx Web Server (€5.00/mo)</MenuItem>
-              <MenuItem value="postgres">PostgreSQL Database (€15.00/mo)</MenuItem>
-              <MenuItem value="redis">Redis Cache (€10.00/mo)</MenuItem>
-              <MenuItem value="custom">Custom Docker Image (€20.00/mo)</MenuItem>
+              <MenuItem value="nginx">Nginx Web Server</MenuItem>
+              <MenuItem value="postgres">PostgreSQL Database</MenuItem>
+              <MenuItem value="redis">Redis Cache</MenuItem>
+              <MenuItem value="custom">Custom Docker Image</MenuItem>
+            </Select>
+          </FormControl>
+
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Size</InputLabel>
+            <Select
+              value={podSize}
+              label="Size"
+              onChange={(e) => setPodSize(e.target.value)}
+            >
+              <MenuItem value="small">Small (0.1 CPU, 128MB)</MenuItem>
+              <MenuItem value="medium">Medium (0.5 CPU, 512MB)</MenuItem>
+              <MenuItem value="large">Large (1.0 CPU, 1GB)</MenuItem>
             </Select>
           </FormControl>
 
@@ -281,9 +330,35 @@ function Dashboard() {
             />
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpen(false)}>Cancel</Button>
+        <DialogActions sx={{ p: 3 }}>
+          <Button onClick={() => setOpen(false)} color="inherit">Cancel</Button>
           <Button onClick={handleCreate} variant="contained">Deploy</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Logs Dialog */}
+      <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: '#0a1929' } }}>
+        <DialogTitle sx={{ color: 'white', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          Logs: {logPodName}
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <Box sx={{ 
+            bgcolor: 'black', 
+            p: 2, 
+            borderRadius: 1, 
+            fontFamily: 'monospace', 
+            fontSize: '0.85rem', 
+            color: '#00ff00',
+            overflowX: 'auto',
+            whiteSpace: 'pre-wrap',
+            maxHeight: '60vh',
+            overflowY: 'auto'
+          }}>
+            {currentLogs || "No logs available..."}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setLogsOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>
