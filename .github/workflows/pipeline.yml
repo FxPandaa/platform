@@ -40,20 +40,17 @@ jobs:
       # 4. Deploy direct op de VM (via kubectl)
       - name: Deploy to K3s
         run: |
-          # Gebruik de lokale K3s config op de server
-          export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-          
           # 1. Apply de configuratie (maakt namespace aan)
-          kubectl apply -f k8s/platform.yaml
+          sudo kubectl apply -f k8s/platform.yaml --kubeconfig=/etc/rancher/k3s/k3s.yaml
 
           # 2. Maak de 'regcred' secret aan in Kubernetes (zodat hij mag pullen)
-          kubectl create secret docker-registry regcred \
+          sudo kubectl create secret docker-registry regcred \
             --docker-server=https://index.docker.io/v1/ \
             --docker-username=${{ secrets.DOCKER_USERNAME }} \
             --docker-password=${{ secrets.DOCKER_PASSWORD }} \
             -n admin-platform \
-            --dry-run=client -o yaml | kubectl apply -f -
+            --dry-run=client -o yaml | sudo kubectl apply -f - --kubeconfig=/etc/rancher/k3s/k3s.yaml
           
           # 3. Forceer een update van de pods
-          kubectl rollout restart deployment/backend -n admin-platform
-          kubectl rollout restart deployment/frontend -n admin-platform
+          sudo kubectl rollout restart deployment/backend -n admin-platform --kubeconfig=/etc/rancher/k3s/k3s.yaml
+          sudo kubectl rollout restart deployment/frontend -n admin-platform --kubeconfig=/etc/rancher/k3s/k3s.yaml
