@@ -228,6 +228,16 @@ def get_pods(current_user: User = Depends(get_current_user)):
             # Fix: Look up by app_type (which matches the service selector 'app' label)
             node_port = service_ports.get(app_type)
             public_ip = p.status.host_ip if p.status.host_ip else "Pending"
+            
+            # Ingress lookup (safe)
+            external_url = None
+            try:
+                # We assume ingress name is {app_type}-svc-ingress based on create_pod logic
+                ing = networking_v1.read_namespaced_ingress(name=f"{app_type}-svc-ingress", namespace=ns_name)
+                if ing.spec.rules:
+                    external_url = f"http://{ing.spec.rules[0].host}"
+            except:
+                pass
 
             pods.append(PodInfo(
                 name=p.metadata.name,
@@ -238,7 +248,8 @@ def get_pods(current_user: User = Depends(get_current_user)):
                 pod_ip=p.status.pod_ip,
                 node_name=p.spec.node_name,
                 public_ip=public_ip,
-                node_port=node_port
+                node_port=node_port,
+                external_url=external_url
             ))
     except client.exceptions.ApiException:
         pass # Namespace bestaat misschien nog niet of is leeg
@@ -425,11 +436,17 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
     
     labels = {"app": pod_name, "owner": safe_owner} # Gebruik pod_name als app label voor unieke service mapping
     
+    # Alleen imagePullSecrets toevoegen voor custom images of als we zeker weten dat het nodig is
+    # Voor publieke images (nginx, postgres, etc) is het niet nodig en kan het errors geven als de secret niet klopt
+    image_pull_secrets = []
+    if pod.service_type == "custom":
+         image_pull_secrets = [client.V1LocalObjectReference(name="regcred")]
+
     template = client.V1PodTemplateSpec(
         metadata=client.V1ObjectMeta(labels=labels),
         spec=client.V1PodSpec(
             containers=[container],
-            image_pull_secrets=[client.V1LocalObjectReference(name="regcred")] # Gebruik de secret!
+            image_pull_secrets=image_pull_secrets
         )
     )
     
@@ -572,17 +589,28 @@ def get_my_deployments(current_user: User = Depends(get_current_user)):
             
             # Haal Service info op voor NodePort
             try:
-                svc = v1.read_namespaced_service(name=d.metadata.name + "-svc", namespace=ns_name)
+                # We proberen de service te vinden. De naamgeving is soms inconsistent (wel/niet -svc suffix)
+                # We proberen eerst met -svc suffix (standaard voor nieuwe pods)
+                svc_name = d.metadata.name + "-svc"
+                try:
+                    svc = v1.read_namespaced_service(name=svc_name, namespace=ns_name)
+                except client.exceptions.ApiException:
+                    # Fallback: probeer zonder suffix (voor oude pods) of met andere naam
+                    svc_name = d.metadata.name
+                    svc = v1.read_namespaced_service(name=svc_name, namespace=ns_name)
+
                 # Probeer Ingress te vinden
                 try:
-                    ing = networking_v1.read_namespaced_ingress(name=d.metadata.name + "-svc-ingress", namespace=ns_name)
+                    ing = networking_v1.read_namespaced_ingress(name=svc_name + "-ingress", namespace=ns_name)
                     if ing.spec.rules:
                         external_url = f"http://{ing.spec.rules[0].host}"
                 except:
-                    # Fallback naar NodePort als Ingress niet bestaat
-                    if svc.spec.ports:
-                        node_port = svc.spec.ports[0].node_port
-                        external_url = f"http://192.168.154.114:{node_port}"
+                    pass
+                
+                # Fallback naar NodePort als Ingress niet bestaat of faalde
+                if not external_url and svc.spec.ports:
+                    node_port = svc.spec.ports[0].node_port
+                    external_url = f"http://192.168.154.114:{node_port}"
             except:
                 pass
 
