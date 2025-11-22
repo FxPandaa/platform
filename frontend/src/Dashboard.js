@@ -139,6 +139,11 @@ function Dashboard() {
   };
 
   const handleViewLogs = async (podName) => {
+    const pod = pods.find(p => p.name === podName);
+    if (pod && pod.status !== 'Running' && pod.status !== 'Succeeded') {
+        alert(`Cannot fetch logs. Pod status is ${pod.status}. \nDetails: ${pod.message || 'Container is not running.'}`);
+        return;
+    }
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get(`${BACKEND_URL}/pods/${podName}/logs`, {
@@ -149,7 +154,7 @@ function Dashboard() {
       setLogsOpen(true);
     } catch (error) {
       console.error(error);
-      alert("Failed to fetch logs");
+      alert("Failed to fetch logs. The container might be starting or crashed.");
     }
   };
 
@@ -244,7 +249,7 @@ function Dashboard() {
                     </Typography>
                     <Chip 
                       label={pod.status} 
-                      color={pod.status === 'Running' ? 'success' : 'warning'} 
+                      color={pod.status === 'Running' ? 'success' : (pod.status === 'Pending' ? 'warning' : 'error')} 
                       size="small" 
                       variant="filled"
                     />
@@ -252,6 +257,12 @@ function Dashboard() {
                   <Typography color="textSecondary" variant="body2" gutterBottom sx={{ fontFamily: 'monospace' }}>
                     {pod.name}
                   </Typography>
+                  
+                  {pod.message && (
+                    <Alert severity="error" sx={{ mt: 1, mb: 1, py: 0, fontSize: '0.75rem' }}>
+                      {pod.message}
+                    </Alert>
+                  )}
                   
                   {linkedPods.length > 0 && (
                     <Box sx={{ mt: 1, mb: 1, p: 1, bgcolor: 'rgba(255,255,255,0.05)', borderRadius: 1 }}>

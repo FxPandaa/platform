@@ -259,9 +259,23 @@ def get_pods(current_user: User = Depends(get_current_user)):
                 pod_ip = p.status.pod_ip if p.status.pod_ip else None
                 node_name = p.spec.node_name if p.spec.node_name else None
 
+                # Determine detailed status
+                status = p.status.phase
+                message = None
+                if p.status.container_statuses:
+                    for container_status in p.status.container_statuses:
+                        if container_status.state.waiting:
+                            status = container_status.state.waiting.reason
+                            message = container_status.state.waiting.message
+                            break
+                        if container_status.state.terminated:
+                            status = container_status.state.terminated.reason
+                            message = container_status.state.terminated.message
+                            break
+
                 pod_info = PodInfo(
                     name=p.metadata.name,
-                    status=p.status.phase,
+                    status=status,
                     cost=cost,
                     type=app_type,
                     age=age,
@@ -270,7 +284,8 @@ def get_pods(current_user: User = Depends(get_current_user)):
                     public_ip=public_ip,
                     node_port=node_port,
                     external_url=external_url,
-                    group_id=group_id
+                    group_id=group_id,
+                    message=message
                 )
                 pods.append(pod_info)
                 print(f"  Successfully added pod {p.metadata.name}")
