@@ -12,6 +12,7 @@ from sqlalchemy.orm import sessionmaker, Session
 import os
 import random
 import re
+from typing import Optional
 
 # --- CONFIGURATIE ---
 SECRET_KEY = "super-secret-key-change-this-in-production"
@@ -107,7 +108,7 @@ class UserCreate(BaseModel):
 
 class PodCreate(BaseModel):
     service_type: str # nginx, postgres, redis, custom
-    custom_image: str = None # Optioneel, voor als service_type 'custom' is
+    custom_image: Optional[str] = None # Optioneel, voor als service_type 'custom' is
 
 class PodInfo(BaseModel):
     name: str
@@ -228,7 +229,9 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
     pod_name = f"{pod.service_type}-{random.randint(1000,9999)}"
     
     # Image selectie
-    if pod.service_type == "custom" and pod.custom_image:
+    if pod.service_type == "custom":
+        if not pod.custom_image:
+            raise HTTPException(status_code=400, detail="Custom image is required for custom service type")
         image = pod.custom_image
         # Sanitize pod name for custom
         pod_name = f"custom-{random.randint(1000,9999)}"

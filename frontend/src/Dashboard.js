@@ -77,7 +77,12 @@ function Dashboard() {
       fetchPods();
     } catch (error) {
       console.error(error);
-      alert(`Failed to create pod: ${error.response?.data?.detail || error.message}`);
+      let errorMsg = error.message;
+      if (error.response?.data?.detail) {
+        const detail = error.response.data.detail;
+        errorMsg = typeof detail === 'object' ? JSON.stringify(detail) : detail;
+      }
+      alert(`Failed to create pod: ${errorMsg}`);
     }
   };
 
