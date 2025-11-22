@@ -368,19 +368,23 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
                 selector=client.V1LabelSelector(match_labels=mysql_labels),
                 template=client.V1PodTemplateSpec(
                     metadata=client.V1ObjectMeta(labels=mysql_labels),
-                    spec=client.V1PodSpec(containers=[mysql_container])
+                    spec=client.V1PodSpec(
+                        containers=[mysql_container]
+                        # No imagePullSecrets for public images
+                    )
                 )
             )
         )
         apps_v1.create_namespaced_deployment(namespace=ns_name, body=mysql_deployment)
         
-        # MySQL Service (ClusterIP is genoeg voor interne communicatie, maar we doen NodePort voor consistentie)
+        # MySQL Service (NodePort voor visibility in dashboard)
         mysql_service = client.V1Service(
             api_version="v1",
             kind="Service",
             metadata=client.V1ObjectMeta(name=mysql_name, labels={"service_group": group_id}),
             spec=client.V1ServiceSpec(
                 selector={"app": mysql_name},
+                type="NodePort",
                 ports=[client.V1ServicePort(port=3306, target_port=3306)]
             )
         )
@@ -411,7 +415,10 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
                 selector=client.V1LabelSelector(match_labels=wp_labels),
                 template=client.V1PodTemplateSpec(
                     metadata=client.V1ObjectMeta(labels=wp_labels),
-                    spec=client.V1PodSpec(containers=[wp_container])
+                    spec=client.V1PodSpec(
+                        containers=[wp_container]
+                        # No imagePullSecrets for public images
+                    )
                 )
             )
         )
@@ -430,8 +437,8 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
         )
         v1.create_namespaced_service(namespace=ns_name, body=wp_service)
         
-        # Ingress
-        host = f"{pod_name}.{ns_name}.192.168.154.114.sslip.io"
+        # Ingress for professional domain
+        host = f"{ns_name}.192.168.154.114.sslip.io"
         create_ingress(ns_name, f"{pod_name}-svc", 80, host)
         
         return {"message": f"WordPress site {pod_name} created successfully"}
@@ -515,9 +522,10 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
         )
         v1.create_namespaced_service(namespace=ns_name, body=service)
         
-        # Maak Ingress aan
-        host = f"{pod_name}.{ns_name}.192.168.154.114.sslip.io"
-        create_ingress(ns_name, f"{pod_name}-svc", target_port, host)
+        # Create Ingress for professional domain (except for databases)
+        if pod.service_type not in ["postgres", "redis", "mysql"]:
+            host = f"{ns_name}.192.168.154.114.sslip.io"
+            create_ingress(ns_name, f"{pod_name}-svc", target_port, host)
         
         return {"message": f"Pod {pod_name} created successfully"}
     except client.exceptions.ApiException as e:

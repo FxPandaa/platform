@@ -219,8 +219,8 @@ function Dashboard() {
         </Box>
 
         <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
-          <Tab label="All Apps" />
-          <Tab label="Web Services" />
+          <Tab label="All Services" />
+          <Tab label="Applications" />
           <Tab label="Databases" />
           <Tab label="Monitoring" />
         </Tabs>
@@ -284,7 +284,20 @@ function Dashboard() {
                     )}
                   </Box>
 
-                  {pod.node_port && (
+                  {pod.external_url && (
+                    <Button 
+                      variant="contained" 
+                      fullWidth 
+                      size="small"
+                      href={pod.external_url}
+                      target="_blank"
+                      sx={{ mb: 1, bgcolor: 'primary.main', color: 'white' }}
+                    >
+                      Open via Domain ↗
+                    </Button>
+                  )}
+                  
+                  {pod.node_port && !pod.external_url && (
                     <Button 
                       variant="outlined" 
                       fullWidth 
@@ -293,7 +306,7 @@ function Dashboard() {
                       target="_blank"
                       sx={{ mb: 1, borderColor: 'rgba(255,255,255,0.2)', color: 'primary.main' }}
                     >
-                      Open Service ↗
+                      Open via IP:Port ↗
                     </Button>
                   )}
 
