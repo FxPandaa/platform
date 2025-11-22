@@ -220,7 +220,12 @@ function Dashboard() {
         </Tabs>
 
         <Grid container spacing={3}>
-          {filteredPods.map((pod) => (
+          {filteredPods.map((pod) => {
+            const linkedPods = pod.group_id 
+              ? pods.filter(p => p.group_id === pod.group_id && p.name !== pod.name)
+              : [];
+
+            return (
             <Grid item xs={12} sm={6} md={4} key={pod.name}>
               <Card elevation={0} sx={{ bgcolor: 'background.paper', border: '1px solid rgba(255,255,255,0.1)' }}>
                 <CardContent>
@@ -238,6 +243,24 @@ function Dashboard() {
                   <Typography color="textSecondary" variant="body2" gutterBottom sx={{ fontFamily: 'monospace' }}>
                     {pod.name}
                   </Typography>
+                  
+                  {linkedPods.length > 0 && (
+                    <Box sx={{ mt: 1, mb: 1, p: 1, bgcolor: 'rgba(255,255,255,0.05)', borderRadius: 1 }}>
+                      <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                        Linked Services:
+                      </Typography>
+                      {linkedPods.map(lp => (
+                        <Chip 
+                          key={lp.name} 
+                          label={lp.type} 
+                          size="small" 
+                          variant="outlined" 
+                          sx={{ mr: 0.5, mb: 0.5, fontSize: '0.7rem' }} 
+                        />
+                      ))}
+                    </Box>
+                  )}
+
                   <Box sx={{ mt: 2, mb: 2 }}>
                     <Typography variant="body2" color="text.secondary">
                       Age: {pod.age}
@@ -299,7 +322,8 @@ function Dashboard() {
                 </CardActions>
               </Card>
             </Grid>
-          ))}
+          );
+          })}
         </Grid>
 
         {pods.length === 0 && (

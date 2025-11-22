@@ -123,6 +123,7 @@ class PodInfo(BaseModel):
     external_url: str = None # Nieuw veld voor externe toegang
     public_ip: str = None
     node_port: int = None
+    group_id: Optional[str] = None # ID om gerelateerde services te linken (bijv. WP + MySQL)
 
 # --- ENDPOINTS ---
 
@@ -245,6 +246,9 @@ def get_pods(current_user: User = Depends(get_current_user)):
                         external_url = f"http://{ing.spec.rules[0].host}"
                 except:
                     pass
+                
+                # Group ID lookup
+                group_id = labels.get("service_group")
 
                 pods.append(PodInfo(
                     name=p.metadata.name,
@@ -256,7 +260,8 @@ def get_pods(current_user: User = Depends(get_current_user)):
                     node_name=p.spec.node_name,
                     public_ip=public_ip,
                     node_port=node_port,
-                    external_url=external_url
+                    external_url=external_url,
+                    group_id=group_id
                 ))
             except Exception as e:
                 print(f"Skipping pod {p.metadata.name} due to error: {e}")
@@ -317,9 +322,12 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
     # --- MARKETPLACE LOGIC ---
     
     if pod.service_type == "wordpress":
+        # Generate Group ID for linking services
+        group_id = str(random.randint(10000, 99999))
+
         # 1. MySQL Deployment
         mysql_name = f"mysql-{random.randint(1000,9999)}"
-        mysql_labels = {"app": mysql_name, "owner": safe_owner}
+        mysql_labels = {"app": mysql_name, "owner": safe_owner, "service_group": group_id}
         mysql_env = [
             client.V1EnvVar(name="MYSQL_ROOT_PASSWORD", value="secret"),
             client.V1EnvVar(name="MYSQL_DATABASE", value="wordpress"),
@@ -362,7 +370,7 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
         v1.create_namespaced_service(namespace=ns_name, body=mysql_service)
         
         # 2. WordPress Deployment
-        wp_labels = {"app": pod_name, "owner": safe_owner}
+        wp_labels = {"app": pod_name, "owner": safe_owner, "service_group": group_id}
         wp_env = [
             client.V1EnvVar(name="WORDPRESS_DB_HOST", value=mysql_name),
             client.V1EnvVar(name="WORDPRESS_DB_USER", value="wordpress"),
