@@ -105,7 +105,8 @@ class UserCreate(BaseModel):
     company_name: str
 
 class PodCreate(BaseModel):
-    service_type: str # nginx, postgres, redis
+    service_type: str # nginx, postgres, redis, custom
+    custom_image: str = None # Optioneel, voor als service_type 'custom' is
 
 class PodInfo(BaseModel):
     name: str
@@ -113,6 +114,9 @@ class PodInfo(BaseModel):
     cost: float
     type: str
     age: str
+    message: str = None
+    pod_ip: str = None
+    node_name: str = None
 
 # --- ENDPOINTS ---
 
@@ -139,6 +143,23 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
         try:
             ns_body = client.V1Namespace(metadata=client.V1ObjectMeta(name=ns_name))
             v1.create_namespace(body=ns_body)
+            
+            # KOPIEER REGCRED SECRET (voor Docker Hub pull rechten)
+            try:
+                # Lees de secret uit admin-platform
+                secret = v1.read_namespaced_secret("regcred", "admin-platform")
+                # Maak hem klaar voor de nieuwe namespace
+                secret.metadata.namespace = ns_name
+                secret.metadata.resource_version = None
+                secret.metadata.uid = None
+                secret.metadata.creation_timestamp = None
+                secret.metadata.owner_references = None
+                # Maak hem aan
+                v1.create_namespaced_secret(namespace=ns_name, body=secret)
+                print(f"Copied regcred to {ns_name}")
+            except Exception as e:
+                print(f"Warning: Could not copy regcred secret: {e}")
+
         except client.exceptions.ApiException as e:
             if e.status != 409: # 409 = Conflict (bestaat al), dat is ok. Andere errors niet.
                 print(f"Warning: Could not create namespace: {e}")
@@ -195,26 +216,34 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
     ns_name = get_namespace_name(current_user.company_name)
     pod_name = f"{pod.service_type}-{random.randint(1000,9999)}"
     
-    # Simpele image selectie
-    image_map = {
-        "nginx": "nginx:latest",
-        "postgres": "postgres:13",
-        "redis": "redis:alpine"
-    }
-    image = image_map.get(pod.service_type, "nginx:latest")
+    # Image selectie
+    if pod.service_type == "custom" and pod.custom_image:
+        image = pod.custom_image
+        # Sanitize pod name for custom
+        pod_name = f"custom-{random.randint(1000,9999)}"
+    else:
+        image_map = {
+            "nginx": "nginx:latest",
+            "postgres": "postgres:13",
+            "redis": "redis:alpine"
+        }
+        image = image_map.get(pod.service_type, "nginx:latest")
 
     # Deployment aanmaken
     container = client.V1Container(
-        name=pod.service_type,
+        name=pod.service_type if pod.service_type != "custom" else "app",
         image=image,
-        ports=[client.V1ContainerPort(container_port=80 if pod.service_type == "nginx" else 5432)]
+        ports=[client.V1ContainerPort(container_port=80)] # Default 80, kan verbeterd worden
     )
     # Voeg owner label toe zodat we weten van wie hij is
     labels = {"app": pod.service_type, "owner": current_user.username}
     
     template = client.V1PodTemplateSpec(
         metadata=client.V1ObjectMeta(labels=labels),
-        spec=client.V1PodSpec(containers=[container])
+        spec=client.V1PodSpec(
+            containers=[container],
+            image_pull_secrets=[client.V1LocalObjectReference(name="regcred")] # Gebruik de secret!
+        )
     )
     spec = client.V1DeploymentSpec(
         replicas=1,
@@ -277,25 +306,54 @@ def delete_pod(pod_name: str, current_user: User = Depends(get_current_user)):
 def get_my_deployments(current_user: User = Depends(get_current_user)):
     ns_name = get_namespace_name(current_user.company_name)
     deployments = []
-    prices = {"nginx": 5.00, "postgres": 15.00, "redis": 10.00}
+    prices = {"nginx": 5.00, "postgres": 15.00, "redis": 10.00, "custom": 20.00}
 
     try:
         k8s_deps = apps_v1.list_namespaced_deployment(namespace=ns_name, label_selector=f"owner={current_user.username}")
         for d in k8s_deps.items:
             app_type = d.metadata.labels.get("app", "unknown")
-            cost = prices.get(app_type, 0.0)
+            cost = prices.get(app_type, 20.00)
             
             creation_timestamp = d.metadata.creation_timestamp
             age = "Unknown"
             if creation_timestamp:
                 age = str(datetime.now(creation_timestamp.tzinfo) - creation_timestamp).split('.')[0]
 
+            # Haal extra info op van de pods
+            message = "Scaling..."
+            pod_ip = "Pending"
+            node_name = "Pending"
+            
+            try:
+                pods = v1.list_namespaced_pod(namespace=ns_name, label_selector=f"app={app_type},owner={current_user.username}")
+                if pods.items:
+                    pod = pods.items[0] # Pak de eerste pod
+                    pod_ip = pod.status.pod_ip or "Pending"
+                    node_name = pod.spec.node_name or "Pending"
+                    
+                    # Status message logic
+                    if pod.status.container_statuses:
+                        for cs in pod.status.container_statuses:
+                            if cs.state.waiting:
+                                message = f"{cs.state.waiting.reason}: {cs.state.waiting.message or ''}"
+                            elif cs.state.terminated:
+                                message = f"Terminated: {cs.state.terminated.reason}"
+                            elif cs.state.running:
+                                message = "Running Healthy"
+                    else:
+                        message = pod.status.phase
+            except Exception:
+                message = "Error fetching pod details"
+
             deployments.append(PodInfo(
                 name=d.metadata.name,
                 status=f"{d.status.ready_replicas or 0}/{d.spec.replicas} Ready",
                 cost=cost,
                 type=app_type,
-                age=age
+                age=age,
+                message=message,
+                pod_ip=pod_ip,
+                node_name=node_name
             ))
     except client.exceptions.ApiException:
         pass

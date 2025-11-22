@@ -20,7 +20,9 @@ import {
   InputLabel,
   Chip,
   Box,
-  IconButton
+  IconButton,
+  TextField,
+  Alert
 } from '@mui/material';
 import { Add as AddIcon, Delete as DeleteIcon, Refresh as RefreshIcon, Logout as LogoutIcon } from '@mui/icons-material';
 import axios from 'axios';
@@ -31,6 +33,7 @@ function Dashboard() {
   const [pods, setPods] = useState([]);
   const [open, setOpen] = useState(false);
   const [serviceType, setServiceType] = useState('nginx');
+  const [customImage, setCustomImage] = useState('');
   const navigate = useNavigate();
   const company = localStorage.getItem('company');
 
@@ -64,7 +67,10 @@ function Dashboard() {
     try {
       const token = localStorage.getItem('token');
       await axios.post(`${BACKEND_URL}/pods`, 
-        { service_type: serviceType },
+        { 
+          service_type: serviceType,
+          custom_image: serviceType === 'custom' ? customImage : null
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setOpen(false);
@@ -150,7 +156,18 @@ function Dashboard() {
                     <Typography variant="body2" color="text.secondary">
                       Age: {pod.age}
                     </Typography>
-                    <Typography variant="body1" color="primary.main" fontWeight="bold" mt={0.5}>
+                    <Typography variant="body2" color="text.secondary">
+                      Node: {pod.node_name || 'Pending'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      IP: {pod.pod_ip || 'Pending'}
+                    </Typography>
+                    {pod.message && (
+                      <Alert severity={pod.message.includes('Healthy') ? 'success' : 'error'} sx={{ mt: 1, py: 0.5, fontSize: '0.8rem' }}>
+                        {pod.message.length > 50 ? pod.message.substring(0, 50) + '...' : pod.message}
+                      </Alert>
+                    )}
+                    <Typography variant="body1" color="primary.main" fontWeight="bold" mt={1}>
                       €{pod.cost.toFixed(2)} / mo
                     </Typography>
                   </Box>
@@ -195,8 +212,21 @@ function Dashboard() {
               <MenuItem value="nginx">Nginx Web Server (€5.00/mo)</MenuItem>
               <MenuItem value="postgres">PostgreSQL Database (€15.00/mo)</MenuItem>
               <MenuItem value="redis">Redis Cache (€10.00/mo)</MenuItem>
+              <MenuItem value="custom">Custom Docker Image (€20.00/mo)</MenuItem>
             </Select>
           </FormControl>
+
+          {serviceType === 'custom' && (
+            <TextField
+              fullWidth
+              margin="dense"
+              label="Docker Image Name"
+              placeholder="e.g. nginx:latest or myrepo/app:v1"
+              value={customImage}
+              onChange={(e) => setCustomImage(e.target.value)}
+              helperText="Ensure the cluster can pull this image."
+            />
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>
