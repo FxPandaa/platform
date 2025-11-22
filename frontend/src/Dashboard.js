@@ -76,7 +76,22 @@ function Dashboard() {
       setOpen(false);
       fetchPods();
     } catch (error) {
-      alert('Failed to create pod');
+      console.error(error);
+      alert(`Failed to create pod: ${error.response?.data?.detail || error.message}`);
+    }
+  };
+
+  const handleDeleteCompany = async () => {
+    if (!window.confirm("ARE YOU SURE? This will delete your company, all services, and your account permanently!")) return;
+    
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`${BACKEND_URL}/company`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      handleLogout();
+    } catch (error) {
+      alert(`Failed to delete company: ${error.response?.data?.detail || error.message}`);
     }
   };
 
@@ -114,6 +129,9 @@ function Dashboard() {
           </IconButton>
           <Button color="inherit" startIcon={<LogoutIcon />} onClick={handleLogout}>
             Logout
+          </Button>
+          <Button color="error" onClick={handleDeleteCompany} sx={{ ml: 2 }}>
+            Delete Company
           </Button>
         </Toolbar>
       </AppBar>

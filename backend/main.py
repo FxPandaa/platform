@@ -218,6 +218,10 @@ def get_my_pods(current_user: User = Depends(get_current_user)):
         
     return pods
 
+def get_safe_label(text: str) -> str:
+    # Labels mogen geen spaties bevatten, alleen a-z, 0-9, -, _, .
+    return re.sub(r'[^a-zA-Z0-9\-\_\.]', '-', text)
+
 @app.post("/pods")
 def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
     ns_name = get_namespace_name(current_user.company_name)
@@ -247,7 +251,9 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
         ports=[client.V1ContainerPort(container_port=target_port)]
     )
     # Voeg owner label toe zodat we weten van wie hij is
-    labels = {"app": pod.service_type, "owner": current_user.username, "deployment": pod_name}
+    # BELANGRIJK: Sanitize labels!
+    safe_owner = get_safe_label(current_user.username)
+    labels = {"app": pod.service_type, "owner": safe_owner, "deployment": pod_name}
     
     template = client.V1PodTemplateSpec(
         metadata=client.V1ObjectMeta(labels=labels),
@@ -285,9 +291,33 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
         v1.create_namespaced_service(namespace=ns_name, body=service)
         
     except client.exceptions.ApiException as e:
+        print(f"Create Pod Error: {e}")
+        raise HTTPException(status_code=500, detail=f"K8s Error: {e.reason}")
+    except Exception as e:
+        print(f"Generic Create Pod Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
     return {"status": "creating", "name": pod_name}
+
+@app.delete("/company")
+def delete_company(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ns_name = get_namespace_name(current_user.company_name)
+    
+    # 1. Verwijder Namespace (dit verwijdert alle pods, services, secrets, etc.)
+    try:
+        v1.delete_namespace(name=ns_name)
+    except client.exceptions.ApiException as e:
+        if e.status != 404:
+            raise HTTPException(status_code=500, detail=f"Failed to delete namespace: {e}")
+            
+    # 2. Verwijder User uit DB
+    try:
+        db.delete(current_user)
+        db.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete user: {e}")
+        
+    return {"msg": "Company and all resources deleted"}
 
 @app.delete("/pods/{pod_name}")
 def delete_pod(pod_name: str, current_user: User = Depends(get_current_user)):
