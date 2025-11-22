@@ -249,18 +249,37 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
 
     # Deployment aanmaken
     target_port = 80
-    if pod.service_type == "postgres": target_port = 5432
+    env_vars = []
+    
+    if pod.service_type == "postgres": 
+        target_port = 5432
+        env_vars.append(client.V1EnvVar(name="POSTGRES_PASSWORD", value="mysecretpassword"))
+        
     if pod.service_type == "redis": target_port = 6379
+
+    # Resource limits
+    resources = client.V1ResourceRequirements()
+    if pod.size == "small":
+        resources.requests = {"cpu": "100m", "memory": "128Mi"}
+        resources.limits = {"cpu": "200m", "memory": "256Mi"}
+    elif pod.size == "medium":
+        resources.requests = {"cpu": "500m", "memory": "512Mi"}
+        resources.limits = {"cpu": "1000m", "memory": "1Gi"}
+    elif pod.size == "large":
+        resources.requests = {"cpu": "1000m", "memory": "1Gi"}
+        resources.limits = {"cpu": "2000m", "memory": "2Gi"}
     
     container = client.V1Container(
         name=pod.service_type if pod.service_type != "custom" else "app",
         image=image,
-        ports=[client.V1ContainerPort(container_port=target_port)]
+        ports=[client.V1ContainerPort(container_port=target_port)],
+        env=env_vars,
+        resources=resources
     )
     # Voeg owner label toe zodat we weten van wie hij is
     # BELANGRIJK: Sanitize labels!
     safe_owner = get_safe_label(current_user.username)
-    labels = {"app": pod.service_type, "owner": safe_owner, "deployment": pod_name}
+    labels = {"app": pod_name, "owner": safe_owner} # Gebruik pod_name als app label voor unieke service mapping
     
     template = client.V1PodTemplateSpec(
         metadata=client.V1ObjectMeta(labels=labels),
@@ -269,16 +288,16 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
             image_pull_secrets=[client.V1LocalObjectReference(name="regcred")] # Gebruik de secret!
         )
     )
-    spec = client.V1DeploymentSpec(
-        replicas=1,
-        selector=client.V1LabelSelector(match_labels=labels),
-        template=template
-    )
+    
     deployment = client.V1Deployment(
         api_version="apps/v1",
         kind="Deployment",
         metadata=client.V1ObjectMeta(name=pod_name, labels=labels),
-        spec=spec
+        spec=client.V1DeploymentSpec(
+            replicas=1,
+            selector=client.V1LabelSelector(match_labels=labels),
+            template=template
+        )
     )
 
     try:
@@ -288,16 +307,18 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
         service = client.V1Service(
             api_version="v1",
             kind="Service",
-            metadata=client.V1ObjectMeta(name=pod_name, labels=labels),
+            metadata=client.V1ObjectMeta(name=f"{pod_name}-svc"),
             spec=client.V1ServiceSpec(
-                selector=labels,
+                selector={"app": pod_name},
                 type="NodePort",
                 ports=[client.V1ServicePort(port=target_port, target_port=target_port)]
             )
         )
         v1.create_namespaced_service(namespace=ns_name, body=service)
         
+        return {"message": f"Pod {pod_name} created successfully"}
     except client.exceptions.ApiException as e:
+        raise HTTPException(status_code=500, detail=str(e))
         print(f"Create Pod Error: {e}")
         raise HTTPException(status_code=500, detail=f"K8s Error: {e.reason}")
     except Exception as e:
