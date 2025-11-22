@@ -172,6 +172,11 @@ function Dashboard() {
     return 'other';
   };
 
+  // Debugging: Log all pods before filtering
+  useEffect(() => {
+    console.log("Current pods in state:", pods);
+  }, [pods]);
+
   const filteredPods = pods.filter(pod => {
     const cat = getCategory(pod.type);
     if (tabValue === 0) return true;

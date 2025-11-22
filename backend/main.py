@@ -353,6 +353,23 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
     
     # --- MARKETPLACE LOGIC ---
     
+    # Ensure regcred exists in user namespace (copy from admin-platform if missing)
+    try:
+        try:
+            v1.read_namespaced_secret("regcred", ns_name)
+        except client.exceptions.ApiException as e:
+            if e.status == 404:
+                secret = v1.read_namespaced_secret("regcred", "admin-platform")
+                secret.metadata.namespace = ns_name
+                secret.metadata.resource_version = None
+                secret.metadata.uid = None
+                secret.metadata.creation_timestamp = None
+                secret.metadata.owner_references = None
+                v1.create_namespaced_secret(namespace=ns_name, body=secret)
+                print(f"Copied regcred to {ns_name} during pod creation")
+    except Exception as e:
+        print(f"Warning: Could not copy regcred secret: {e}")
+
     if pod.service_type == "wordpress":
         # Generate Group ID for linking services
         group_id = str(random.randint(10000, 99999))
@@ -384,8 +401,8 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
                 template=client.V1PodTemplateSpec(
                     metadata=client.V1ObjectMeta(labels=mysql_labels),
                     spec=client.V1PodSpec(
-                        containers=[mysql_container]
-                        # No imagePullSecrets for public images
+                        containers=[mysql_container],
+                        image_pull_secrets=[client.V1LocalObjectReference(name="regcred")]
                     )
                 )
             )
@@ -431,8 +448,8 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
                 template=client.V1PodTemplateSpec(
                     metadata=client.V1ObjectMeta(labels=wp_labels),
                     spec=client.V1PodSpec(
-                        containers=[wp_container]
-                        # No imagePullSecrets for public images
+                        containers=[wp_container],
+                        image_pull_secrets=[client.V1LocalObjectReference(name="regcred")]
                     )
                 )
             )
@@ -496,11 +513,8 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
     
     labels = {"app": pod_name, "owner": safe_owner} # Gebruik pod_name als app label voor unieke service mapping
     
-    # Alleen imagePullSecrets toevoegen voor custom images of als we zeker weten dat het nodig is
-    # Voor publieke images (nginx, postgres, etc) is het niet nodig en kan het errors geven als de secret niet klopt
-    image_pull_secrets = []
-    if pod.service_type == "custom":
-         image_pull_secrets = [client.V1LocalObjectReference(name="regcred")]
+    # Always use regcred for Docker Hub authentication to avoid rate limits
+    image_pull_secrets = [client.V1LocalObjectReference(name="regcred")]
 
     template = client.V1PodTemplateSpec(
         metadata=client.V1ObjectMeta(labels=labels),
