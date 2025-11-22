@@ -22,7 +22,9 @@ import {
   Box,
   IconButton,
   TextField,
-  Alert
+  Alert,
+  Tabs,
+  Tab
 } from '@mui/material';
 import { Add as AddIcon, Delete as DeleteIcon, Refresh as RefreshIcon, Logout as LogoutIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
 import axios from 'axios';
@@ -210,6 +212,13 @@ function Dashboard() {
           </Button>
         </Box>
 
+        <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
+          <Tab label="All Apps" />
+          <Tab label="Web Services" />
+          <Tab label="Databases" />
+          <Tab label="Monitoring" />
+        </Tabs>
+
         <Grid container spacing={3}>
           {filteredPods.map((pod) => (
             <Grid item xs={12} sm={6} md={4} key={pod.name}>
@@ -221,7 +230,7 @@ function Dashboard() {
                     </Typography>
                     <Chip 
                       label={pod.status} 
-                      color={pod.status.includes('Ready') ? 'success' : 'warning'} 
+                      color={pod.status === 'Running' ? 'success' : 'warning'} 
                       size="small" 
                       variant="filled"
                     />

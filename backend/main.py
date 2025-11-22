@@ -215,48 +215,53 @@ def get_pods(current_user: User = Depends(get_current_user)):
                             break
 
         for p in k8s_pods.items:
-            # Protect against None labels
-            labels = p.metadata.labels or {}
-            app_type = labels.get("app", "unknown")
-            
-            # Cost calculation (strip random suffix to match price keys)
-            # app_type is like "nginx-1234", we want "nginx"
-            base_type = app_type.split('-')[0] if '-' in app_type else app_type
-            cost = prices.get(base_type, 20.00)
-            
-            # Bereken leeftijd
-            start_time = p.status.start_time
-            age = "Unknown"
-            if start_time:
-                age = str(datetime.now(start_time.tzinfo) - start_time).split('.')[0]
-
-            # NodePort & IP
-            # Fix: Look up by app_type (which matches the service selector 'app' label)
-            node_port = service_ports.get(app_type)
-            public_ip = p.status.host_ip if p.status.host_ip else "Pending"
-            
-            # Ingress lookup (safe)
-            external_url = None
             try:
-                # We assume ingress name is {app_type}-svc-ingress based on create_pod logic
-                ing = networking_v1.read_namespaced_ingress(name=f"{app_type}-svc-ingress", namespace=ns_name)
-                if ing.spec.rules:
-                    external_url = f"http://{ing.spec.rules[0].host}"
-            except:
-                pass
+                # Protect against None labels
+                labels = p.metadata.labels or {}
+                app_type = labels.get("app", "unknown")
+                
+                # Cost calculation (strip random suffix to match price keys)
+                # app_type is like "nginx-1234", we want "nginx"
+                base_type = app_type.split('-')[0] if '-' in app_type else app_type
+                cost = prices.get(base_type, 20.00)
+                
+                # Bereken leeftijd
+                start_time = p.status.start_time
+                age = "Unknown"
+                if start_time:
+                    age = str(datetime.now(start_time.tzinfo) - start_time).split('.')[0]
 
-            pods.append(PodInfo(
-                name=p.metadata.name,
-                status=p.status.phase,
-                cost=cost,
-                type=app_type,
-                age=age,
-                pod_ip=p.status.pod_ip,
-                node_name=p.spec.node_name,
-                public_ip=public_ip,
-                node_port=node_port,
-                external_url=external_url
-            ))
+                # NodePort & IP
+                # Fix: Look up by app_type (which matches the service selector 'app' label)
+                node_port = service_ports.get(app_type)
+                public_ip = p.status.host_ip if p.status.host_ip else "Pending"
+                
+                # Ingress lookup (safe)
+                external_url = None
+                try:
+                    # We assume ingress name is {app_type}-svc-ingress based on create_pod logic
+                    ing = networking_v1.read_namespaced_ingress(name=f"{app_type}-svc-ingress", namespace=ns_name)
+                    if ing.spec.rules:
+                        external_url = f"http://{ing.spec.rules[0].host}"
+                except:
+                    pass
+
+                pods.append(PodInfo(
+                    name=p.metadata.name,
+                    status=p.status.phase,
+                    cost=cost,
+                    type=app_type,
+                    age=age,
+                    pod_ip=p.status.pod_ip,
+                    node_name=p.spec.node_name,
+                    public_ip=public_ip,
+                    node_port=node_port,
+                    external_url=external_url
+                ))
+            except Exception as e:
+                print(f"Skipping pod {p.metadata.name} due to error: {e}")
+                continue
+
     except Exception as e:
         print(f"Error in get_pods: {e}")
         # Return empty list instead of crashing, so frontend doesn't break completely
