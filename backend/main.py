@@ -118,6 +118,7 @@ class PodInfo(BaseModel):
     message: str = None
     pod_ip: str = None
     node_name: str = None
+    external_url: str = None # Nieuw veld voor externe toegang
 
 # --- ENDPOINTS ---
 
@@ -144,28 +145,33 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
         try:
             ns_body = client.V1Namespace(metadata=client.V1ObjectMeta(name=ns_name))
             v1.create_namespace(body=ns_body)
-            
-            # KOPIEER REGCRED SECRET (voor Docker Hub pull rechten)
-            try:
-                # Lees de secret uit admin-platform
-                secret = v1.read_namespaced_secret("regcred", "admin-platform")
-                # Maak hem klaar voor de nieuwe namespace
-                secret.metadata.namespace = ns_name
-                secret.metadata.resource_version = None
-                secret.metadata.uid = None
-                secret.metadata.creation_timestamp = None
-                secret.metadata.owner_references = None
-                # Maak hem aan
-                v1.create_namespaced_secret(namespace=ns_name, body=secret)
-                print(f"Copied regcred to {ns_name}")
-            except Exception as e:
-                print(f"Warning: Could not copy regcred secret: {e}")
-
         except client.exceptions.ApiException as e:
             if e.status != 409: # 409 = Conflict (bestaat al), dat is ok. Andere errors niet.
                 print(f"Warning: Could not create namespace: {e}")
         except Exception as e:
             print(f"Warning: Generic error creating namespace: {e}")
+
+        # KOPIEER REGCRED SECRET (voor Docker Hub pull rechten)
+        # Dit doen we ALTIJD, ook als de namespace al bestaat (voor re-registratie)
+        try:
+            # Check of secret al bestaat
+            try:
+                v1.read_namespaced_secret("regcred", ns_name)
+            except client.exceptions.ApiException as e:
+                if e.status == 404:
+                    # Lees de secret uit admin-platform
+                    secret = v1.read_namespaced_secret("regcred", "admin-platform")
+                    # Maak hem klaar voor de nieuwe namespace
+                    secret.metadata.namespace = ns_name
+                    secret.metadata.resource_version = None
+                    secret.metadata.uid = None
+                    secret.metadata.creation_timestamp = None
+                    secret.metadata.owner_references = None
+                    # Maak hem aan
+                    v1.create_namespaced_secret(namespace=ns_name, body=secret)
+                    print(f"Copied regcred to {ns_name}")
+        except Exception as e:
+            print(f"Warning: Could not copy regcred secret: {e}")
 
         return {"msg": "User created successfully"}
     except Exception as e:
@@ -231,13 +237,17 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
         image = image_map.get(pod.service_type, "nginx:latest")
 
     # Deployment aanmaken
+    target_port = 80
+    if pod.service_type == "postgres": target_port = 5432
+    if pod.service_type == "redis": target_port = 6379
+    
     container = client.V1Container(
         name=pod.service_type if pod.service_type != "custom" else "app",
         image=image,
-        ports=[client.V1ContainerPort(container_port=80)] # Default 80, kan verbeterd worden
+        ports=[client.V1ContainerPort(container_port=target_port)]
     )
     # Voeg owner label toe zodat we weten van wie hij is
-    labels = {"app": pod.service_type, "owner": current_user.username}
+    labels = {"app": pod.service_type, "owner": current_user.username, "deployment": pod_name}
     
     template = client.V1PodTemplateSpec(
         metadata=client.V1ObjectMeta(labels=labels),
@@ -260,6 +270,20 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
 
     try:
         apps_v1.create_namespaced_deployment(namespace=ns_name, body=deployment)
+        
+        # Maak ook een Service aan (NodePort) voor externe toegang
+        service = client.V1Service(
+            api_version="v1",
+            kind="Service",
+            metadata=client.V1ObjectMeta(name=pod_name, labels=labels),
+            spec=client.V1ServiceSpec(
+                selector=labels,
+                type="NodePort",
+                ports=[client.V1ServicePort(port=target_port, target_port=target_port)]
+            )
+        )
+        v1.create_namespaced_service(namespace=ns_name, body=service)
+        
     except client.exceptions.ApiException as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -298,6 +322,11 @@ def delete_pod(pod_name: str, current_user: User = Depends(get_current_user)):
     
     try:
         apps_v1.delete_namespaced_deployment(name=pod_name, namespace=ns_name)
+        # Probeer ook de service te verwijderen
+        try:
+            v1.delete_namespaced_service(name=pod_name, namespace=ns_name)
+        except:
+            pass
     except client.exceptions.ApiException:
         raise HTTPException(status_code=404, detail="Deployment not found")
         
@@ -324,7 +353,20 @@ def get_my_deployments(current_user: User = Depends(get_current_user)):
             message = "Scaling..."
             pod_ip = "Pending"
             node_name = "Pending"
+            external_url = None
             
+            # Haal Service info op voor NodePort
+            try:
+                svc = v1.read_namespaced_service(name=d.metadata.name, namespace=ns_name)
+                if svc.spec.ports:
+                    node_port = svc.spec.ports[0].node_port
+                    # We gebruiken het IP van de master node (of waar de user op zit)
+                    # In een echte cloud zou je hier de LoadBalancer IP pakken.
+                    # Voor nu hardcoden we het IP van de VM die de user gebruikt.
+                    external_url = f"http://192.168.154.114:{node_port}"
+            except:
+                pass
+
             try:
                 pods = v1.list_namespaced_pod(namespace=ns_name, label_selector=f"app={app_type},owner={current_user.username}")
                 if pods.items:
@@ -354,7 +396,8 @@ def get_my_deployments(current_user: User = Depends(get_current_user)):
                 age=age,
                 message=message,
                 pod_ip=pod_ip,
-                node_name=node_name
+                node_name=node_name,
+                external_url=external_url
             ))
     except client.exceptions.ApiException:
         pass

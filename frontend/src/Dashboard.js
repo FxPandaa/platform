@@ -162,6 +162,20 @@ function Dashboard() {
                     <Typography variant="body2" color="text.secondary">
                       IP: {pod.pod_ip || 'Pending'}
                     </Typography>
+                    {pod.external_url && (
+                      <Box mt={1}>
+                        <Button 
+                          variant="outlined" 
+                          size="small" 
+                          href={pod.external_url} 
+                          target="_blank"
+                          fullWidth
+                          sx={{ textTransform: 'none' }}
+                        >
+                          Open Service ↗
+                        </Button>
+                      </Box>
+                    )}
                     {pod.message && (
                       <Alert severity={pod.message.includes('Healthy') ? 'success' : 'error'} sx={{ mt: 1, py: 0.5, fontSize: '0.8rem' }}>
                         {pod.message.length > 50 ? pod.message.substring(0, 50) + '...' : pod.message}
