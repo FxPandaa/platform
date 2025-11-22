@@ -224,7 +224,8 @@ def get_pods(current_user: User = Depends(get_current_user)):
                 age = str(datetime.now(start_time.tzinfo) - start_time).split('.')[0]
 
             # NodePort & IP
-            node_port = service_ports.get(p.metadata.name)
+            # Fix: Look up by app_type (which matches the service selector 'app' label)
+            node_port = service_ports.get(app_type)
             public_ip = p.status.host_ip if p.status.host_ip else "Pending"
 
             pods.append(PodInfo(
