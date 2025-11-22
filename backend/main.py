@@ -197,7 +197,7 @@ def get_pods(current_user: User = Depends(get_current_user)):
     pods = []
     
     # Prijzen tabel
-    prices = {"nginx": 5.00, "postgres": 15.00, "redis": 10.00, "custom": 20.00}
+    prices = {"nginx": 5.00, "postgres": 15.00, "redis": 10.00, "custom": 20.00, "wordpress": 20.00, "mysql": 10.00, "uptime": 10.00}
 
     try:
         # Haal alle pods in de namespace op (geen owner filter)
@@ -265,12 +265,16 @@ def get_pods(current_user: User = Depends(get_current_user)):
                 ))
             except Exception as e:
                 print(f"Skipping pod {p.metadata.name} due to error: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
 
     except Exception as e:
         print(f"Error in get_pods: {e}")
-        # Return empty list instead of crashing, so frontend doesn't break completely
-        return []
+        import traceback
+        traceback.print_exc()
+        # Return what we have so far instead of crashing
+        pass
         
     return pods
 
@@ -361,7 +365,7 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
         mysql_service = client.V1Service(
             api_version="v1",
             kind="Service",
-            metadata=client.V1ObjectMeta(name=mysql_name),
+            metadata=client.V1ObjectMeta(name=mysql_name, labels={"service_group": group_id}),
             spec=client.V1ServiceSpec(
                 selector={"app": mysql_name},
                 ports=[client.V1ServicePort(port=3306, target_port=3306)]
@@ -404,7 +408,7 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
         wp_service = client.V1Service(
             api_version="v1",
             kind="Service",
-            metadata=client.V1ObjectMeta(name=f"{pod_name}-svc"),
+            metadata=client.V1ObjectMeta(name=f"{pod_name}-svc", labels={"service_group": group_id}),
             spec=client.V1ServiceSpec(
                 selector={"app": pod_name},
                 type="NodePort",
@@ -536,45 +540,111 @@ def delete_company(current_user: User = Depends(get_current_user), db: Session =
 @app.delete("/pods/{pod_name}")
 def delete_pod(pod_name: str, current_user: User = Depends(get_current_user)):
     ns_name = get_namespace_name(current_user.company_name)
-    
-    # Check eerst of deze pod wel van de user is (via labels zou netter zijn, maar naam check is ook ok voor nu)
-    # We verwijderen de deployment, dat ruimt de pod ook op
-    try:
-        # Deployment naam is vaak prefix van pod naam, maar hier hebben we deployment naam == pod naam prefix logic
-        # Voor simpelheid in dit script gaan we ervan uit dat de user de deployment naam stuurt (die we in de frontend tonen)
-        # In de frontend sturen we de deployment naam (die we als pod naam tonen in de lijst, even smokkelen)
-        
-        # Omdat we deployments maken, moeten we deployments verwijderen.
-        # De GET /my-pods geeft POD namen terug (bv nginx-1234-xyz). De deployment heet nginx-1234.
-        # We moeten de deployment vinden die bij de pod hoort.
-        
-        # Betere aanpak: We deleten op basis van label selector in de deployment
-        # Maar voor nu: we proberen de deployment te vinden die matcht.
-        
-        # Hack: we deleten de deployment die 'begint' met de naam (zonder de hash)
-        # Of we deleten gewoon de deployment met de naam die we bij create teruggaven.
-        
-        # Laten we het simpel houden: De frontend stuurt de deployment naam.
-        # In GET /my-pods moeten we eigenlijk deployments teruggeven ipv pods voor een cleaner overzicht.
-        pass
-    except Exception:
-        pass
-
-    # Nieuwe implementatie voor DELETE: We deleten de deployment direct
-    # We moeten de deployment naam weten.
-    # Laten we de GET functie aanpassen om Deployments te returnen ipv Pods.
+    deleted_resources = []
     
     try:
-        apps_v1.delete_namespaced_deployment(name=pod_name, namespace=ns_name)
-        # Probeer ook de service te verwijderen
+        # First, check if this pod has a service_group (is part of a multi-service deployment like WordPress)
         try:
-            v1.delete_namespaced_service(name=pod_name, namespace=ns_name)
+            pods_in_ns = v1.list_namespaced_pod(namespace=ns_name)
+            target_pod = None
+            for p in pods_in_ns.items:
+                if p.metadata.name == pod_name:
+                    target_pod = p
+                    break
+            
+            # If the pod has a group_id, delete all resources in that group
+            if target_pod and target_pod.metadata.labels:
+                group_id = target_pod.metadata.labels.get("service_group")
+                if group_id:
+                    # Delete all deployments with this group_id
+                    deps = apps_v1.list_namespaced_deployment(namespace=ns_name, label_selector=f"service_group={group_id}")
+                    for dep in deps.items:
+                        try:
+                            apps_v1.delete_namespaced_deployment(name=dep.metadata.name, namespace=ns_name)
+                            deleted_resources.append(f"deployment/{dep.metadata.name}")
+                        except:
+                            pass
+                    
+                    # Delete all services with this group_id or matching names
+                    svcs = v1.list_namespaced_service(namespace=ns_name)
+                    for svc in svcs.items:
+                        if svc.metadata.labels and svc.metadata.labels.get("service_group") == group_id:
+                            try:
+                                v1.delete_namespaced_service(name=svc.metadata.name, namespace=ns_name)
+                                deleted_resources.append(f"service/{svc.metadata.name}")
+                            except:
+                                pass
+                        # Also check if service name matches deployment names
+                        for dep in deps.items:
+                            if svc.metadata.name.startswith(dep.metadata.name):
+                                try:
+                                    v1.delete_namespaced_service(name=svc.metadata.name, namespace=ns_name)
+                                    deleted_resources.append(f"service/{svc.metadata.name}")
+                                except:
+                                    pass
+                    
+                    # Delete ingresses
+                    ings = networking_v1.list_namespaced_ingress(namespace=ns_name)
+                    for ing in ings.items:
+                        if ing.metadata.name.startswith(target_pod.metadata.labels.get("app", "")):
+                            try:
+                                networking_v1.delete_namespaced_ingress(name=ing.metadata.name, namespace=ns_name)
+                                deleted_resources.append(f"ingress/{ing.metadata.name}")
+                            except:
+                                pass
+                    
+                    return {"status": "deleted", "resources": deleted_resources}
+        except Exception as e:
+            print(f"Error checking for service group: {e}")
+        
+        # Fallback: Single pod/deployment deletion
+        # Extract deployment name from pod name (pods have random suffixes)
+        deployment_name = '-'.join(pod_name.split('-')[:-2]) if pod_name.count('-') >= 2 else pod_name
+        
+        # Try to delete deployment
+        try:
+            apps_v1.delete_namespaced_deployment(name=deployment_name, namespace=ns_name)
+            deleted_resources.append(f"deployment/{deployment_name}")
+        except:
+            # Try with original pod_name as deployment name
+            try:
+                apps_v1.delete_namespaced_deployment(name=pod_name, namespace=ns_name)
+                deleted_resources.append(f"deployment/{pod_name}")
+            except:
+                pass
+        
+        # Try to delete service
+        service_name = f"{deployment_name}-svc"
+        try:
+            v1.delete_namespaced_service(name=service_name, namespace=ns_name)
+            deleted_resources.append(f"service/{service_name}")
+        except:
+            try:
+                v1.delete_namespaced_service(name=deployment_name, namespace=ns_name)
+                deleted_resources.append(f"service/{deployment_name}")
+            except:
+                pass
+        
+        # Try to delete ingress
+        ingress_name = f"{deployment_name}-svc-ingress"
+        try:
+            networking_v1.delete_namespaced_ingress(name=ingress_name, namespace=ns_name)
+            deleted_resources.append(f"ingress/{ingress_name}")
         except:
             pass
-    except client.exceptions.ApiException:
-        raise HTTPException(status_code=404, detail="Deployment not found")
         
-    return {"status": "deleted"}
+        if deleted_resources:
+            return {"status": "deleted", "resources": deleted_resources}
+        else:
+            raise HTTPException(status_code=404, detail="No resources found to delete")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error deleting pod: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error deleting pod: {str(e)}")
 
 @app.get("/pods/{pod_name}/logs")
 def get_pod_logs(pod_name: str, current_user: User = Depends(get_current_user)):
