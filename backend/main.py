@@ -140,8 +140,8 @@ class PodMetrics(BaseModel):
     name: str
     cpu_usage: str
     memory_usage: str
-    cpu_percent: float
-    memory_percent: float
+    cpu_percent: Optional[float] = None
+    memory_percent: Optional[float] = None
 
 class EnvVarUpdate(BaseModel):
     env_vars: dict # {"KEY": "value", "KEY2": "value2"}
