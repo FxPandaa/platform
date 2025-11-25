@@ -398,7 +398,7 @@ function Dashboard() {
     try {
       const token = localStorage.getItem('token');
       await axios.post(`${BACKEND_URL}/pods/${storageDeployment}/storage`, {
-        size_gb: storageSize,
+        size: `${storageSize}Gi`,
         mount_path: storageMountPath
       }, {
         headers: { Authorization: `Bearer ${token}` }
@@ -646,7 +646,7 @@ function Dashboard() {
             <Grid item xs={12} sm={6} md={4} key={pod.name}>
               <Card elevation={0} sx={{ bgcolor: 'background.paper', border: '1px solid rgba(255,255,255,0.1)' }}>
                 <CardContent>
-                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
                     <Typography variant="h6" component="div" fontWeight="bold" color="text.primary">
                       {pod.type.toUpperCase()}
                     </Typography>
@@ -657,9 +657,52 @@ function Dashboard() {
                       variant="filled"
                     />
                   </Box>
-                  <Typography color="textSecondary" variant="body2" gutterBottom sx={{ fontFamily: 'monospace' }}>
+                  <Typography color="textSecondary" variant="body2" gutterBottom sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
                     {pod.name}
                   </Typography>
+                  
+                  {/* Feature Status Badges */}
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 1, mb: 2 }}>
+                    {/* Storage Badge */}
+                    <Chip
+                      icon={<StorageIcon sx={{ fontSize: '0.9rem' }} />}
+                      label={pod.has_storage ? pod.storage_size : 'No Storage'}
+                      size="small"
+                      color={pod.has_storage ? 'success' : 'default'}
+                      variant={pod.has_storage ? 'filled' : 'outlined'}
+                      sx={{ 
+                        fontSize: '0.65rem', 
+                        height: '22px',
+                        opacity: pod.has_storage ? 1 : 0.5
+                      }}
+                    />
+                    {/* Scaling Badge */}
+                    <Chip
+                      icon={<SpeedIcon sx={{ fontSize: '0.9rem' }} />}
+                      label={pod.has_autoscaling ? `Scale ${pod.replicas}` : 'No Scaling'}
+                      size="small"
+                      color={pod.has_autoscaling ? 'info' : 'default'}
+                      variant={pod.has_autoscaling ? 'filled' : 'outlined'}
+                      sx={{ 
+                        fontSize: '0.65rem', 
+                        height: '22px',
+                        opacity: pod.has_autoscaling ? 1 : 0.5
+                      }}
+                    />
+                    {/* Backup Badge */}
+                    <Chip
+                      icon={<BackupIcon sx={{ fontSize: '0.9rem' }} />}
+                      label={pod.has_auto_backup ? 'Auto Backup' : (pod.backup_count > 0 ? `${pod.backup_count} Backups` : 'No Backup')}
+                      size="small"
+                      color={pod.has_auto_backup ? 'success' : (pod.backup_count > 0 ? 'warning' : 'default')}
+                      variant={pod.has_auto_backup || pod.backup_count > 0 ? 'filled' : 'outlined'}
+                      sx={{ 
+                        fontSize: '0.65rem', 
+                        height: '22px',
+                        opacity: pod.has_auto_backup || pod.backup_count > 0 ? 1 : 0.5
+                      }}
+                    />
+                  </Box>
                   
                   {pod.message && (
                     <Alert severity="error" sx={{ mt: 1, mb: 1, py: 0, fontSize: '0.75rem' }}>
@@ -1127,17 +1170,17 @@ function Dashboard() {
                   </Typography>
                   <Box display="flex" justifyContent="space-between" alignItems="center">
                     <Typography variant="body1" color="text.primary">
-                      {storageQuota.used_gb}Gi / {storageQuota.total_gb}Gi used
+                      {storageQuota.used_gi}Gi / {storageQuota.quota_gi}Gi used
                     </Typography>
-                    <Typography variant="body2" color={storageQuota.available_gb < 5 ? 'error.main' : 'success.main'}>
-                      {storageQuota.available_gb}Gi available
+                    <Typography variant="body2" color={storageQuota.available_gi < 5 ? 'error.main' : 'success.main'}>
+                      {storageQuota.available_gi}Gi available
                     </Typography>
                   </Box>
                   <LinearProgress 
                     variant="determinate" 
-                    value={(storageQuota.used_gb / storageQuota.total_gb) * 100} 
+                    value={storageQuota.percent_used} 
                     sx={{ mt: 1, height: 8, borderRadius: 1 }}
-                    color={storageQuota.available_gb < 5 ? 'error' : 'primary'}
+                    color={storageQuota.available_gi < 5 ? 'error' : 'primary'}
                   />
                 </Box>
               )}
@@ -1169,19 +1212,22 @@ function Dashboard() {
               <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                 Add Persistent Storage
               </Typography>
-              <Box sx={{ mb: 2 }}>
+              <Box sx={{ mb: 2, px: 1 }}>
                 <Typography gutterBottom>Size: {storageSize}Gi</Typography>
                 <Slider
                   value={storageSize}
                   onChange={(e, v) => setStorageSize(v)}
                   min={1}
-                  max={storageQuota ? Math.min(20, storageQuota.available_gb) : 20}
+                  max={storageQuota ? Math.min(50, storageQuota.available_gi) : 50}
+                  step={1}
+                  valueLabelDisplay="auto"
+                  valueLabelFormat={(v) => `${v}Gi`}
                   marks={[
                     { value: 1, label: '1Gi' },
-                    { value: 5, label: '5Gi' },
                     { value: 10, label: '10Gi' },
-                    { value: 20, label: '20Gi' }
-                  ]}
+                    { value: 25, label: '25Gi' },
+                    { value: 50, label: '50Gi' }
+                  ].filter(m => !storageQuota || m.value <= storageQuota.available_gi)}
                 />
               </Box>
               <TextField
@@ -1205,7 +1251,7 @@ function Dashboard() {
             onClick={handleAddStorage} 
             variant="contained" 
             color="primary"
-            disabled={!storageQuota || storageQuota.available_gb < storageSize}
+            disabled={!storageQuota || storageQuota.available_gi < storageSize}
           >
             Add Storage
           </Button>

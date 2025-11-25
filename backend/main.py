@@ -137,6 +137,13 @@ class PodInfo(BaseModel):
     memory_usage: Optional[str] = None # Memory usage (e.g., "128Mi")
     cpu_limit: Optional[str] = None
     memory_limit: Optional[str] = None
+    # Feature status fields
+    has_storage: Optional[bool] = False
+    storage_size: Optional[str] = None
+    has_autoscaling: Optional[bool] = False
+    replicas: Optional[str] = None  # e.g., "1/3" (current/max)
+    has_auto_backup: Optional[bool] = False
+    backup_count: Optional[int] = 0
 
 class PodMetrics(BaseModel):
     name: str
@@ -372,6 +379,52 @@ def get_pods(current_user: User = Depends(get_current_user)):
                             message = container_status.state.terminated.message
                             break
 
+                # ===== Feature Status Lookup =====
+                has_storage = False
+                storage_size = None
+                has_autoscaling = False
+                replicas = None
+                has_auto_backup = False
+                backup_count = 0
+                
+                try:
+                    # Check for PVC (storage)
+                    pvc_name = f"{app_type}-pvc"
+                    try:
+                        pvc = v1.read_namespaced_persistent_volume_claim(name=pvc_name, namespace=ns_name)
+                        has_storage = True
+                        storage_size = pvc.spec.resources.requests.get("storage", "?")
+                    except:
+                        pass
+                    
+                    # Check for HPA (autoscaling)
+                    hpa_name = f"{app_type}-hpa"
+                    try:
+                        hpa = autoscaling_v1.read_namespaced_horizontal_pod_autoscaler(name=hpa_name, namespace=ns_name)
+                        has_autoscaling = True
+                        current = hpa.status.current_replicas or 1
+                        max_rep = hpa.spec.max_replicas
+                        replicas = f"{current}/{max_rep}"
+                    except:
+                        pass
+                    
+                    # Check for auto-backup CronJob
+                    cronjob_name = f"autobackup-{app_type}"
+                    try:
+                        batch_v1.read_namespaced_cron_job(name=cronjob_name, namespace=ns_name)
+                        has_auto_backup = True
+                    except:
+                        pass
+                    
+                    # Count manual backups
+                    try:
+                        jobs = batch_v1.list_namespaced_job(namespace=ns_name, label_selector=f"backup-for={app_type}")
+                        backup_count = len(jobs.items)
+                    except:
+                        pass
+                except Exception as feature_err:
+                    print(f"  Warning: Could not fetch feature status: {feature_err}")
+
                 pod_info = PodInfo(
                     name=p.metadata.name,
                     status=status,
@@ -384,7 +437,13 @@ def get_pods(current_user: User = Depends(get_current_user)):
                     node_port=node_port,
                     external_url=external_url,
                     group_id=group_id,
-                    message=message
+                    message=message,
+                    has_storage=has_storage,
+                    storage_size=storage_size,
+                    has_autoscaling=has_autoscaling,
+                    replicas=replicas,
+                    has_auto_backup=has_auto_backup,
+                    backup_count=backup_count
                 )
                 pods.append(pod_info)
                 print(f"  Successfully added pod {p.metadata.name}")
