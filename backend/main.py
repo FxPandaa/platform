@@ -754,35 +754,68 @@ def get_pod_metrics(pod_name: str, current_user: User = Depends(get_current_user
     """Get CPU and memory usage for a specific pod"""
     ns_name = get_namespace_name(current_user.company_name)
     
+    print(f"[METRICS] Fetching metrics for pod: {pod_name} in namespace: {ns_name}")
+    
     try:
-        # Get pod metrics from metrics.k8s.io API
-        metrics = custom_api.get_namespaced_custom_object(
-            group="metrics.k8s.io",
-            version="v1beta1",
-            namespace=ns_name,
-            plural="pods",
-            name=pod_name
-        )
+        # First verify the pod exists
+        try:
+            pod = v1.read_namespaced_pod(name=pod_name, namespace=ns_name)
+            print(f"[METRICS] Pod found: {pod.metadata.name}")
+        except client.exceptions.ApiException as e:
+            print(f"[METRICS] Pod not found: {e}")
+            raise HTTPException(status_code=404, detail=f"Pod {pod_name} not found")
+        
+        # Try to get metrics from metrics.k8s.io API
+        try:
+            metrics = custom_api.get_namespaced_custom_object(
+                group="metrics.k8s.io",
+                version="v1beta1",
+                namespace=ns_name,
+                plural="pods",
+                name=pod_name
+            )
+            print(f"[METRICS] Got metrics response: {metrics}")
+        except client.exceptions.ApiException as e:
+            print(f"[METRICS] Metrics API error: {e.status} - {e.reason}")
+            if e.status == 404:
+                # Metrics-server might not be installed or pod metrics not ready
+                return PodMetrics(
+                    name=pod_name,
+                    cpu_usage="N/A",
+                    memory_usage="N/A",
+                    cpu_percent=None,
+                    memory_percent=None
+                )
+            raise
         
         # Parse metrics from response
         cpu_usage = "0m"
         memory_usage = "0Mi"
+        total_cpu_nano = 0
+        total_memory_bytes = 0
         
         if "containers" in metrics:
-            total_cpu_nano = 0
-            total_memory_bytes = 0
-            
             for container in metrics["containers"]:
                 usage = container.get("usage", {})
+                print(f"[METRICS] Container usage: {usage}")
                 
-                # CPU is in nanocores (e.g., "12345678n")
+                # CPU is in nanocores (e.g., "12345678n") or millicores (e.g., "100m")
                 cpu_str = usage.get("cpu", "0n")
                 if cpu_str.endswith("n"):
                     total_cpu_nano += int(cpu_str[:-1])
                 elif cpu_str.endswith("m"):
                     total_cpu_nano += int(cpu_str[:-1]) * 1000000
+                elif cpu_str.endswith("u"):
+                    # Microcores
+                    total_cpu_nano += int(cpu_str[:-1]) * 1000
+                else:
+                    try:
+                        # Assume cores
+                        total_cpu_nano += int(float(cpu_str) * 1000000000)
+                    except:
+                        pass
                 
-                # Memory is in bytes (e.g., "12345Ki")
+                # Memory is in bytes (e.g., "12345Ki", "100Mi", "1Gi")
                 mem_str = usage.get("memory", "0")
                 if mem_str.endswith("Ki"):
                     total_memory_bytes += int(mem_str[:-2]) * 1024
@@ -790,6 +823,12 @@ def get_pod_metrics(pod_name: str, current_user: User = Depends(get_current_user
                     total_memory_bytes += int(mem_str[:-2]) * 1024 * 1024
                 elif mem_str.endswith("Gi"):
                     total_memory_bytes += int(mem_str[:-2]) * 1024 * 1024 * 1024
+                elif mem_str.endswith("K"):
+                    total_memory_bytes += int(mem_str[:-1]) * 1000
+                elif mem_str.endswith("M"):
+                    total_memory_bytes += int(mem_str[:-1]) * 1000000
+                elif mem_str.endswith("G"):
+                    total_memory_bytes += int(mem_str[:-1]) * 1000000000
                 else:
                     try:
                         total_memory_bytes += int(mem_str)
@@ -802,35 +841,33 @@ def get_pod_metrics(pod_name: str, current_user: User = Depends(get_current_user
             
             memory_mi = total_memory_bytes / (1024 * 1024)
             memory_usage = f"{int(memory_mi)}Mi"
+            
+            print(f"[METRICS] Parsed: CPU={cpu_usage}, Memory={memory_usage}")
         
         # Get resource limits from pod spec for percentage calculation
         cpu_percent = None
         memory_percent = None
         
-        try:
-            pod = v1.read_namespaced_pod(name=pod_name, namespace=ns_name)
-            for container in pod.spec.containers:
-                if container.resources and container.resources.limits:
-                    limits = container.resources.limits
-                    if "cpu" in limits:
-                        limit_cpu = limits["cpu"]
-                        if limit_cpu.endswith("m"):
-                            limit_milli = int(limit_cpu[:-1])
-                        else:
-                            limit_milli = int(float(limit_cpu) * 1000)
-                        cpu_percent = round((cpu_milli / limit_milli) * 100, 1) if limit_milli > 0 else None
-                    
-                    if "memory" in limits:
-                        limit_mem = limits["memory"]
-                        if limit_mem.endswith("Mi"):
-                            limit_bytes = int(limit_mem[:-2]) * 1024 * 1024
-                        elif limit_mem.endswith("Gi"):
-                            limit_bytes = int(limit_mem[:-2]) * 1024 * 1024 * 1024
-                        else:
-                            limit_bytes = int(limit_mem)
-                        memory_percent = round((total_memory_bytes / limit_bytes) * 100, 1) if limit_bytes > 0 else None
-        except:
-            pass
+        for container in pod.spec.containers:
+            if container.resources and container.resources.limits:
+                limits = container.resources.limits
+                if "cpu" in limits:
+                    limit_cpu = limits["cpu"]
+                    if limit_cpu.endswith("m"):
+                        limit_milli = int(limit_cpu[:-1])
+                    else:
+                        limit_milli = int(float(limit_cpu) * 1000)
+                    cpu_percent = round((cpu_milli / limit_milli) * 100, 1) if limit_milli > 0 else None
+                
+                if "memory" in limits:
+                    limit_mem = limits["memory"]
+                    if limit_mem.endswith("Mi"):
+                        limit_bytes = int(limit_mem[:-2]) * 1024 * 1024
+                    elif limit_mem.endswith("Gi"):
+                        limit_bytes = int(limit_mem[:-2]) * 1024 * 1024 * 1024
+                    else:
+                        limit_bytes = int(limit_mem)
+                    memory_percent = round((total_memory_bytes / limit_bytes) * 100, 1) if limit_bytes > 0 else None
         
         return PodMetrics(
             name=pod_name,
@@ -840,19 +877,13 @@ def get_pod_metrics(pod_name: str, current_user: User = Depends(get_current_user
             memory_percent=memory_percent
         )
         
-    except client.exceptions.ApiException as e:
-        if e.status == 404:
-            # Metrics not available yet (pod just started or metrics-server not running)
-            return PodMetrics(
-                name=pod_name,
-                cpu_usage="N/A",
-                memory_usage="N/A",
-                cpu_percent=None,
-                memory_percent=None
-            )
-        raise HTTPException(status_code=500, detail=f"Error fetching metrics: {e.reason}")
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Error fetching metrics for {pod_name}: {e}")
+        print(f"[METRICS] Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return N/A instead of crashing
         return PodMetrics(
             name=pod_name,
             cpu_usage="N/A",

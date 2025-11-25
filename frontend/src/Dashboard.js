@@ -192,10 +192,12 @@ function Dashboard() {
       const response = await axios.get(`${BACKEND_URL}/pods/${podName}/metrics`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      console.log("Metrics response:", response.data);
       setCurrentMetrics(response.data);
     } catch (error) {
       console.error("Error fetching metrics:", error);
-      setCurrentMetrics({ error: "Failed to fetch metrics" });
+      const errorMsg = error.response?.data?.detail || error.message || "Failed to fetch metrics";
+      setCurrentMetrics({ error: errorMsg });
     } finally {
       setMetricsLoading(false);
     }
