@@ -24,9 +24,15 @@ import {
   TextField,
   Alert,
   Tabs,
-  Tab
+  Tab,
+  LinearProgress,
+  CircularProgress,
+  List,
+  ListItem,
+  ListItemText,
+  Divider
 } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon, Refresh as RefreshIcon, Logout as LogoutIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
+import { Add as AddIcon, Delete as DeleteIcon, Refresh as RefreshIcon, Logout as LogoutIcon, CheckCircle as CheckCircleIcon, Memory as MemoryIcon, Settings as SettingsIcon } from '@mui/icons-material';
 import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://192.168.154.114:30001";
@@ -40,6 +46,22 @@ function Dashboard() {
   const [currentLogs, setCurrentLogs] = useState('');
   const [logPodName, setLogPodName] = useState('');
   const [tabValue, setTabValue] = useState(0);
+  
+  // Metrics state
+  const [metricsOpen, setMetricsOpen] = useState(false);
+  const [currentMetrics, setCurrentMetrics] = useState(null);
+  const [metricsPodName, setMetricsPodName] = useState('');
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  
+  // Environment Variables state
+  const [envOpen, setEnvOpen] = useState(false);
+  const [currentEnvVars, setCurrentEnvVars] = useState({});
+  const [envPodName, setEnvPodName] = useState('');
+  const [envLoading, setEnvLoading] = useState(false);
+  const [newEnvKey, setNewEnvKey] = useState('');
+  const [newEnvValue, setNewEnvValue] = useState('');
+  const [envDeploymentName, setEnvDeploymentName] = useState('');
+  
   const navigate = useNavigate();
   const company = localStorage.getItem('company');
 
@@ -155,6 +177,105 @@ function Dashboard() {
     } catch (error) {
       console.error(error);
       alert("Failed to fetch logs. The container might be starting or crashed.");
+    }
+  };
+
+  // ==================== METRICS HANDLERS ====================
+  const handleViewMetrics = async (podName) => {
+    setMetricsPodName(podName);
+    setMetricsLoading(true);
+    setMetricsOpen(true);
+    setCurrentMetrics(null);
+    
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${BACKEND_URL}/pods/${podName}/metrics`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setCurrentMetrics(response.data);
+    } catch (error) {
+      console.error("Error fetching metrics:", error);
+      setCurrentMetrics({ error: "Failed to fetch metrics" });
+    } finally {
+      setMetricsLoading(false);
+    }
+  };
+
+  // Auto-refresh metrics when dialog is open
+  useEffect(() => {
+    if (metricsOpen && metricsPodName) {
+      const interval = setInterval(async () => {
+        try {
+          const token = localStorage.getItem('token');
+          const response = await axios.get(`${BACKEND_URL}/pods/${metricsPodName}/metrics`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          setCurrentMetrics(response.data);
+        } catch (error) {
+          console.error("Error refreshing metrics:", error);
+        }
+      }, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [metricsOpen, metricsPodName]);
+
+  // ==================== ENVIRONMENT VARIABLES HANDLERS ====================
+  const handleViewEnv = async (podName) => {
+    setEnvPodName(podName);
+    setEnvLoading(true);
+    setEnvOpen(true);
+    setCurrentEnvVars({});
+    setNewEnvKey('');
+    setNewEnvValue('');
+    
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${BACKEND_URL}/pods/${podName}/env`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setCurrentEnvVars(response.data.env_vars || {});
+      setEnvDeploymentName(response.data.deployment_name || podName);
+    } catch (error) {
+      console.error("Error fetching env vars:", error);
+      alert("Failed to fetch environment variables");
+      setEnvOpen(false);
+    } finally {
+      setEnvLoading(false);
+    }
+  };
+
+  const handleAddEnvVar = () => {
+    if (newEnvKey && newEnvKey.trim()) {
+      setCurrentEnvVars(prev => ({
+        ...prev,
+        [newEnvKey.trim()]: newEnvValue
+      }));
+      setNewEnvKey('');
+      setNewEnvValue('');
+    }
+  };
+
+  const handleRemoveEnvVar = (key) => {
+    setCurrentEnvVars(prev => {
+      const updated = { ...prev };
+      delete updated[key];
+      return updated;
+    });
+  };
+
+  const handleSaveEnvVars = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.put(`${BACKEND_URL}/pods/${envPodName}/env`, 
+        { env_vars: currentEnvVars },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      alert("Environment variables updated. The pod will restart with new values.");
+      setEnvOpen(false);
+      fetchPods();
+    } catch (error) {
+      console.error("Error saving env vars:", error);
+      alert(`Failed to save environment variables: ${error.response?.data?.detail || error.message}`);
     }
   };
 
@@ -334,10 +455,32 @@ function Dashboard() {
                       fullWidth 
                       size="small"
                       onClick={() => handleViewLogs(pod.name)}
-                      sx={{ mb: 2, borderColor: 'rgba(255,255,255,0.2)', color: 'text.secondary' }}
+                      sx={{ mb: 1, borderColor: 'rgba(255,255,255,0.2)', color: 'text.secondary' }}
                     >
                       View Logs
                   </Button>
+                  
+                  <Box display="flex" gap={1} mb={2}>
+                    <Button 
+                      variant="outlined" 
+                      size="small"
+                      startIcon={<MemoryIcon />}
+                      onClick={() => handleViewMetrics(pod.name)}
+                      sx={{ flex: 1, borderColor: 'rgba(255,255,255,0.2)', color: 'text.secondary' }}
+                      disabled={pod.status !== 'Running'}
+                    >
+                      Metrics
+                    </Button>
+                    <Button 
+                      variant="outlined" 
+                      size="small"
+                      startIcon={<SettingsIcon />}
+                      onClick={() => handleViewEnv(pod.name)}
+                      sx={{ flex: 1, borderColor: 'rgba(255,255,255,0.2)', color: 'text.secondary' }}
+                    >
+                      Env Vars
+                    </Button>
+                  </Box>
 
                   {pod.message && (
                       <Alert severity={pod.message.includes('Healthy') ? 'success' : 'error'} sx={{ mt: 1, py: 0.5, fontSize: '0.8rem' }}>
@@ -436,6 +579,219 @@ function Dashboard() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setLogsOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Metrics Dialog */}
+      <Dialog open={metricsOpen} onClose={() => setMetricsOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { bgcolor: '#0a1929' } }}>
+        <DialogTitle sx={{ color: 'white', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <Box display="flex" alignItems="center" gap={1}>
+            <MemoryIcon />
+            Resource Usage: {metricsPodName}
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          {metricsLoading ? (
+            <Box display="flex" justifyContent="center" alignItems="center" py={4}>
+              <CircularProgress />
+            </Box>
+          ) : currentMetrics?.error ? (
+            <Alert severity="error">{currentMetrics.error}</Alert>
+          ) : currentMetrics ? (
+            <Box>
+              {/* CPU Usage */}
+              <Box mb={3}>
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  CPU Usage
+                </Typography>
+                <Box display="flex" alignItems="center" gap={2}>
+                  <Box flex={1}>
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={currentMetrics.cpu_percent || 0} 
+                      sx={{ 
+                        height: 10, 
+                        borderRadius: 5,
+                        bgcolor: 'rgba(255,255,255,0.1)',
+                        '& .MuiLinearProgress-bar': {
+                          bgcolor: currentMetrics.cpu_percent > 80 ? 'error.main' : 
+                                   currentMetrics.cpu_percent > 50 ? 'warning.main' : 'success.main'
+                        }
+                      }}
+                    />
+                  </Box>
+                  <Typography variant="body1" color="text.primary" sx={{ minWidth: 80 }}>
+                    {currentMetrics.cpu_usage}
+                  </Typography>
+                </Box>
+                {currentMetrics.cpu_percent && (
+                  <Typography variant="caption" color="text.secondary">
+                    {currentMetrics.cpu_percent}% of limit
+                  </Typography>
+                )}
+              </Box>
+
+              {/* Memory Usage */}
+              <Box mb={3}>
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Memory Usage
+                </Typography>
+                <Box display="flex" alignItems="center" gap={2}>
+                  <Box flex={1}>
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={currentMetrics.memory_percent || 0} 
+                      sx={{ 
+                        height: 10, 
+                        borderRadius: 5,
+                        bgcolor: 'rgba(255,255,255,0.1)',
+                        '& .MuiLinearProgress-bar': {
+                          bgcolor: currentMetrics.memory_percent > 80 ? 'error.main' : 
+                                   currentMetrics.memory_percent > 50 ? 'warning.main' : 'primary.main'
+                        }
+                      }}
+                    />
+                  </Box>
+                  <Typography variant="body1" color="text.primary" sx={{ minWidth: 80 }}>
+                    {currentMetrics.memory_usage}
+                  </Typography>
+                </Box>
+                {currentMetrics.memory_percent && (
+                  <Typography variant="caption" color="text.secondary">
+                    {currentMetrics.memory_percent}% of limit
+                  </Typography>
+                )}
+              </Box>
+
+              <Alert severity="info" sx={{ mt: 2 }}>
+                Metrics auto-refresh every 3 seconds
+              </Alert>
+            </Box>
+          ) : (
+            <Typography color="text.secondary">No metrics available</Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMetricsOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Environment Variables Dialog */}
+      <Dialog open={envOpen} onClose={() => setEnvOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: '#0a1929' } }}>
+        <DialogTitle sx={{ color: 'white', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <Box display="flex" alignItems="center" gap={1}>
+            <SettingsIcon />
+            Environment Variables: {envDeploymentName}
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          {envLoading ? (
+            <Box display="flex" justifyContent="center" alignItems="center" py={4}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Box>
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                Changing environment variables will restart the pod
+              </Alert>
+              
+              {/* Current Env Vars List */}
+              <List sx={{ bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 1, mb: 2 }}>
+                {Object.keys(currentEnvVars).length === 0 ? (
+                  <ListItem>
+                    <ListItemText 
+                      primary="No environment variables set" 
+                      sx={{ color: 'text.secondary' }}
+                    />
+                  </ListItem>
+                ) : (
+                  Object.entries(currentEnvVars).map(([key, value], index) => (
+                    <React.Fragment key={key}>
+                      {index > 0 && <Divider />}
+                      <ListItem
+                        secondaryAction={
+                          value !== '(secret)' && (
+                            <IconButton 
+                              edge="end" 
+                              color="error" 
+                              size="small"
+                              onClick={() => handleRemoveEnvVar(key)}
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          )
+                        }
+                      >
+                        <ListItemText
+                          primary={
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <Typography 
+                                component="span" 
+                                sx={{ fontFamily: 'monospace', color: 'primary.main' }}
+                              >
+                                {key}
+                              </Typography>
+                              {value === '(secret)' && (
+                                <Chip label="Secret" size="small" color="warning" />
+                              )}
+                            </Box>
+                          }
+                          secondary={
+                            <Typography 
+                              component="span" 
+                              sx={{ 
+                                fontFamily: 'monospace', 
+                                color: 'text.secondary',
+                                wordBreak: 'break-all'
+                              }}
+                            >
+                              {value === '(secret)' ? '••••••••' : value}
+                            </Typography>
+                          }
+                        />
+                      </ListItem>
+                    </React.Fragment>
+                  ))
+                )}
+              </List>
+
+              {/* Add New Env Var */}
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Add New Variable
+              </Typography>
+              <Box display="flex" gap={1} alignItems="flex-start">
+                <TextField
+                  size="small"
+                  label="Key"
+                  value={newEnvKey}
+                  onChange={(e) => setNewEnvKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''))}
+                  placeholder="MY_VAR"
+                  sx={{ flex: 1 }}
+                />
+                <TextField
+                  size="small"
+                  label="Value"
+                  value={newEnvValue}
+                  onChange={(e) => setNewEnvValue(e.target.value)}
+                  placeholder="value"
+                  sx={{ flex: 2 }}
+                />
+                <Button 
+                  variant="outlined" 
+                  onClick={handleAddEnvVar}
+                  disabled={!newEnvKey.trim()}
+                >
+                  Add
+                </Button>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          <Button onClick={() => setEnvOpen(false)} color="inherit">Cancel</Button>
+          <Button onClick={handleSaveEnvVars} variant="contained" color="primary">
+            Save & Restart Pod
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

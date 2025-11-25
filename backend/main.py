@@ -38,6 +38,7 @@ except config.ConfigException:
 v1 = client.CoreV1Api()
 apps_v1 = client.AppsV1Api()
 networking_v1 = client.NetworkingV1Api()
+custom_api = client.CustomObjectsApi()  # For metrics API
 
 app = FastAPI()
 
@@ -110,6 +111,7 @@ class UserCreate(BaseModel):
 class PodCreate(BaseModel):
     service_type: str # nginx, postgres, redis, custom
     custom_image: Optional[str] = None # Optioneel, voor als service_type 'custom' is
+    env_vars: Optional[dict] = None # Custom environment variables
 
 class PodInfo(BaseModel):
     name: str
@@ -124,6 +126,20 @@ class PodInfo(BaseModel):
     public_ip: Optional[str] = None
     node_port: Optional[int] = None
     group_id: Optional[str] = None # ID om gerelateerde services te linken (bijv. WP + MySQL)
+    cpu_usage: Optional[str] = None # CPU usage (e.g., "50m" = 50 millicores)
+    memory_usage: Optional[str] = None # Memory usage (e.g., "128Mi")
+    cpu_limit: Optional[str] = None
+    memory_limit: Optional[str] = None
+
+class PodMetrics(BaseModel):
+    name: str
+    cpu_usage: str
+    memory_usage: str
+    cpu_percent: float
+    memory_percent: float
+
+class EnvVarUpdate(BaseModel):
+    env_vars: dict # {"KEY": "value", "KEY2": "value2"}
 
 # --- ENDPOINTS ---
 
@@ -730,6 +746,241 @@ def get_pod_logs(pod_name: str, current_user: User = Depends(get_current_user)):
         return {"logs": logs}
     except client.exceptions.ApiException as e:
         raise HTTPException(status_code=404, detail="Logs not found")
+
+
+# ==================== METRICS API ====================
+@app.get("/pods/{pod_name}/metrics", response_model=PodMetrics)
+def get_pod_metrics(pod_name: str, current_user: User = Depends(get_current_user)):
+    """Get CPU and memory usage for a specific pod"""
+    ns_name = get_namespace_name(current_user.company_name)
+    
+    try:
+        # Get pod metrics from metrics.k8s.io API
+        metrics = custom_api.get_namespaced_custom_object(
+            group="metrics.k8s.io",
+            version="v1beta1",
+            namespace=ns_name,
+            plural="pods",
+            name=pod_name
+        )
+        
+        # Parse metrics from response
+        cpu_usage = "0m"
+        memory_usage = "0Mi"
+        
+        if "containers" in metrics:
+            total_cpu_nano = 0
+            total_memory_bytes = 0
+            
+            for container in metrics["containers"]:
+                usage = container.get("usage", {})
+                
+                # CPU is in nanocores (e.g., "12345678n")
+                cpu_str = usage.get("cpu", "0n")
+                if cpu_str.endswith("n"):
+                    total_cpu_nano += int(cpu_str[:-1])
+                elif cpu_str.endswith("m"):
+                    total_cpu_nano += int(cpu_str[:-1]) * 1000000
+                
+                # Memory is in bytes (e.g., "12345Ki")
+                mem_str = usage.get("memory", "0")
+                if mem_str.endswith("Ki"):
+                    total_memory_bytes += int(mem_str[:-2]) * 1024
+                elif mem_str.endswith("Mi"):
+                    total_memory_bytes += int(mem_str[:-2]) * 1024 * 1024
+                elif mem_str.endswith("Gi"):
+                    total_memory_bytes += int(mem_str[:-2]) * 1024 * 1024 * 1024
+                else:
+                    try:
+                        total_memory_bytes += int(mem_str)
+                    except:
+                        pass
+            
+            # Convert to human readable
+            cpu_milli = total_cpu_nano / 1000000
+            cpu_usage = f"{int(cpu_milli)}m"
+            
+            memory_mi = total_memory_bytes / (1024 * 1024)
+            memory_usage = f"{int(memory_mi)}Mi"
+        
+        # Get resource limits from pod spec for percentage calculation
+        cpu_percent = None
+        memory_percent = None
+        
+        try:
+            pod = v1.read_namespaced_pod(name=pod_name, namespace=ns_name)
+            for container in pod.spec.containers:
+                if container.resources and container.resources.limits:
+                    limits = container.resources.limits
+                    if "cpu" in limits:
+                        limit_cpu = limits["cpu"]
+                        if limit_cpu.endswith("m"):
+                            limit_milli = int(limit_cpu[:-1])
+                        else:
+                            limit_milli = int(float(limit_cpu) * 1000)
+                        cpu_percent = round((cpu_milli / limit_milli) * 100, 1) if limit_milli > 0 else None
+                    
+                    if "memory" in limits:
+                        limit_mem = limits["memory"]
+                        if limit_mem.endswith("Mi"):
+                            limit_bytes = int(limit_mem[:-2]) * 1024 * 1024
+                        elif limit_mem.endswith("Gi"):
+                            limit_bytes = int(limit_mem[:-2]) * 1024 * 1024 * 1024
+                        else:
+                            limit_bytes = int(limit_mem)
+                        memory_percent = round((total_memory_bytes / limit_bytes) * 100, 1) if limit_bytes > 0 else None
+        except:
+            pass
+        
+        return PodMetrics(
+            name=pod_name,
+            cpu_usage=cpu_usage,
+            memory_usage=memory_usage,
+            cpu_percent=cpu_percent,
+            memory_percent=memory_percent
+        )
+        
+    except client.exceptions.ApiException as e:
+        if e.status == 404:
+            # Metrics not available yet (pod just started or metrics-server not running)
+            return PodMetrics(
+                name=pod_name,
+                cpu_usage="N/A",
+                memory_usage="N/A",
+                cpu_percent=None,
+                memory_percent=None
+            )
+        raise HTTPException(status_code=500, detail=f"Error fetching metrics: {e.reason}")
+    except Exception as e:
+        print(f"Error fetching metrics for {pod_name}: {e}")
+        return PodMetrics(
+            name=pod_name,
+            cpu_usage="N/A",
+            memory_usage="N/A",
+            cpu_percent=None,
+            memory_percent=None
+        )
+
+
+# ==================== ENVIRONMENT VARIABLES API ====================
+@app.get("/pods/{pod_name}/env")
+def get_pod_env(pod_name: str, current_user: User = Depends(get_current_user)):
+    """Get environment variables for a pod's deployment"""
+    ns_name = get_namespace_name(current_user.company_name)
+    
+    try:
+        # Extract deployment name from pod name (pods have random suffixes like nginx-1234-abc123-xyz)
+        # The deployment name is everything before the last two dash-separated parts
+        parts = pod_name.split('-')
+        if len(parts) >= 3:
+            # Try progressively shorter names until we find the deployment
+            for i in range(len(parts) - 1, 0, -1):
+                try_name = '-'.join(parts[:i])
+                try:
+                    deployment = apps_v1.read_namespaced_deployment(name=try_name, namespace=ns_name)
+                    break
+                except:
+                    continue
+            else:
+                raise HTTPException(status_code=404, detail="Deployment not found")
+        else:
+            deployment = apps_v1.read_namespaced_deployment(name=pod_name, namespace=ns_name)
+        
+        # Extract env vars from first container
+        env_vars = {}
+        if deployment.spec.template.spec.containers:
+            container = deployment.spec.template.spec.containers[0]
+            if container.env:
+                for env in container.env:
+                    # Skip secret refs, only return plain values
+                    if env.value is not None:
+                        env_vars[env.name] = env.value
+                    elif env.value_from:
+                        env_vars[env.name] = "(secret)"
+        
+        return {"env_vars": env_vars, "deployment_name": deployment.metadata.name}
+        
+    except HTTPException:
+        raise
+    except client.exceptions.ApiException as e:
+        if e.status == 404:
+            raise HTTPException(status_code=404, detail="Deployment not found")
+        raise HTTPException(status_code=500, detail=f"Error fetching env vars: {e.reason}")
+    except Exception as e:
+        print(f"Error fetching env vars for {pod_name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/pods/{pod_name}/env")
+def update_pod_env(pod_name: str, env_update: EnvVarUpdate, current_user: User = Depends(get_current_user)):
+    """Update environment variables for a pod's deployment (triggers rolling restart)"""
+    ns_name = get_namespace_name(current_user.company_name)
+    
+    try:
+        # Find the deployment
+        parts = pod_name.split('-')
+        deployment = None
+        deployment_name = None
+        
+        if len(parts) >= 3:
+            for i in range(len(parts) - 1, 0, -1):
+                try_name = '-'.join(parts[:i])
+                try:
+                    deployment = apps_v1.read_namespaced_deployment(name=try_name, namespace=ns_name)
+                    deployment_name = try_name
+                    break
+                except:
+                    continue
+        
+        if not deployment:
+            try:
+                deployment = apps_v1.read_namespaced_deployment(name=pod_name, namespace=ns_name)
+                deployment_name = pod_name
+            except:
+                raise HTTPException(status_code=404, detail="Deployment not found")
+        
+        # Update environment variables
+        if deployment.spec.template.spec.containers:
+            container = deployment.spec.template.spec.containers[0]
+            
+            # Build new env list, preserving secrets
+            new_env = []
+            existing_secrets = {}
+            
+            if container.env:
+                for env in container.env:
+                    if env.value_from:
+                        # Preserve secret refs
+                        existing_secrets[env.name] = env
+            
+            # Add updated env vars
+            for key, value in env_update.env_vars.items():
+                if key in existing_secrets:
+                    new_env.append(existing_secrets[key])
+                else:
+                    new_env.append(client.V1EnvVar(name=key, value=value))
+            
+            container.env = new_env
+            
+            # Apply the update
+            apps_v1.patch_namespaced_deployment(
+                name=deployment_name,
+                namespace=ns_name,
+                body=deployment
+            )
+            
+            return {"message": f"Environment variables updated for {deployment_name}. Pod will restart."}
+        
+        raise HTTPException(status_code=400, detail="No containers found in deployment")
+        
+    except HTTPException:
+        raise
+    except client.exceptions.ApiException as e:
+        raise HTTPException(status_code=500, detail=f"Error updating env vars: {e.reason}")
+    except Exception as e:
+        print(f"Error updating env vars for {pod_name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/my-deployments", response_model=list[PodInfo])
 def get_my_deployments(current_user: User = Depends(get_current_user)):
