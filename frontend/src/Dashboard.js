@@ -189,14 +189,26 @@ function Dashboard() {
     
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${BACKEND_URL}/pods/${podName}/metrics`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const encodedPodName = encodeURIComponent(podName);
+      console.log(`Fetching metrics for: ${podName} (encoded: ${encodedPodName})`);
+      console.log(`URL: ${BACKEND_URL}/pods/${encodedPodName}/metrics`);
+      
+      const response = await axios.get(`${BACKEND_URL}/pods/${encodedPodName}/metrics`, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000  // 10 second timeout
       });
       console.log("Metrics response:", response.data);
       setCurrentMetrics(response.data);
     } catch (error) {
       console.error("Error fetching metrics:", error);
-      const errorMsg = error.response?.data?.detail || error.message || "Failed to fetch metrics";
+      let errorMsg = "Failed to fetch metrics";
+      if (error.code === 'ERR_NETWORK') {
+        errorMsg = "Network error - backend may be unavailable";
+      } else if (error.response?.data?.detail) {
+        errorMsg = error.response.data.detail;
+      } else if (error.message) {
+        errorMsg = error.message;
+      }
       setCurrentMetrics({ error: errorMsg });
     } finally {
       setMetricsLoading(false);
@@ -209,14 +221,16 @@ function Dashboard() {
       const interval = setInterval(async () => {
         try {
           const token = localStorage.getItem('token');
-          const response = await axios.get(`${BACKEND_URL}/pods/${metricsPodName}/metrics`, {
-            headers: { Authorization: `Bearer ${token}` }
+          const encodedPodName = encodeURIComponent(metricsPodName);
+          const response = await axios.get(`${BACKEND_URL}/pods/${encodedPodName}/metrics`, {
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 10000
           });
           setCurrentMetrics(response.data);
         } catch (error) {
           console.error("Error refreshing metrics:", error);
         }
-      }, 3000);
+      }, 5000);  // Increased to 5 seconds to reduce load
       return () => clearInterval(interval);
     }
   }, [metricsOpen, metricsPodName]);
@@ -232,8 +246,10 @@ function Dashboard() {
     
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${BACKEND_URL}/pods/${podName}/env`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const encodedPodName = encodeURIComponent(podName);
+      const response = await axios.get(`${BACKEND_URL}/pods/${encodedPodName}/env`, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
       });
       setCurrentEnvVars(response.data.env_vars || {});
       setEnvDeploymentName(response.data.deployment_name || podName);
@@ -268,7 +284,8 @@ function Dashboard() {
   const handleSaveEnvVars = async () => {
     try {
       const token = localStorage.getItem('token');
-      await axios.put(`${BACKEND_URL}/pods/${envPodName}/env`, 
+      const encodedPodName = encodeURIComponent(envPodName);
+      await axios.put(`${BACKEND_URL}/pods/${encodedPodName}/env`, 
         { env_vars: currentEnvVars },
         { headers: { Authorization: `Bearer ${token}` } }
       );
