@@ -39,6 +39,8 @@ v1 = client.CoreV1Api()
 apps_v1 = client.AppsV1Api()
 networking_v1 = client.NetworkingV1Api()
 custom_api = client.CustomObjectsApi()  # For metrics API
+autoscaling_v1 = client.AutoscalingV1Api()  # For HPA
+batch_v1 = client.BatchV1Api()  # For CronJobs/Jobs
 
 app = FastAPI()
 
@@ -145,6 +147,23 @@ class PodMetrics(BaseModel):
 
 class EnvVarUpdate(BaseModel):
     env_vars: dict # {"KEY": "value", "KEY2": "value2"}
+
+class StorageConfig(BaseModel):
+    size: str = "1Gi"  # e.g., "1Gi", "5Gi", "10Gi"
+    
+class ScalingConfig(BaseModel):
+    min_replicas: int = 1
+    max_replicas: int = 5
+    cpu_threshold: int = 70  # Scale up when CPU > 70%
+
+class BackupInfo(BaseModel):
+    name: str
+    timestamp: str
+    size: str
+    database: str
+
+# Storage quota per company (in Gi)
+COMPANY_STORAGE_QUOTA = 50  # 50Gi total per company
 
 # --- ENDPOINTS ---
 
@@ -1107,3 +1126,605 @@ def get_my_deployments(current_user: User = Depends(get_current_user)):
         pass
         
     return deployments
+
+
+# ==================== PERSISTENT STORAGE API ====================
+
+def get_company_storage_usage(ns_name: str) -> float:
+    """Get total storage used by a company in Gi"""
+    total_gi = 0.0
+    try:
+        pvcs = v1.list_namespaced_persistent_volume_claim(namespace=ns_name)
+        for pvc in pvcs.items:
+            if pvc.spec.resources.requests:
+                storage = pvc.spec.resources.requests.get("storage", "0")
+                # Parse storage string (e.g., "1Gi", "500Mi")
+                if storage.endswith("Gi"):
+                    total_gi += float(storage[:-2])
+                elif storage.endswith("Mi"):
+                    total_gi += float(storage[:-2]) / 1024
+                elif storage.endswith("Ti"):
+                    total_gi += float(storage[:-2]) * 1024
+    except:
+        pass
+    return total_gi
+
+
+@app.get("/storage/quota")
+def get_storage_quota(current_user: User = Depends(get_current_user)):
+    """Get storage quota and usage for the company"""
+    ns_name = get_namespace_name(current_user.company_name)
+    used = get_company_storage_usage(ns_name)
+    
+    return {
+        "quota_gi": COMPANY_STORAGE_QUOTA,
+        "used_gi": round(used, 2),
+        "available_gi": round(COMPANY_STORAGE_QUOTA - used, 2),
+        "percent_used": round((used / COMPANY_STORAGE_QUOTA) * 100, 1)
+    }
+
+
+@app.post("/pods/{deployment_name}/storage")
+def add_storage_to_deployment(deployment_name: str, storage_config: StorageConfig, current_user: User = Depends(get_current_user)):
+    """Add persistent storage to a deployment (creates PVC and mounts it)"""
+    ns_name = get_namespace_name(current_user.company_name)
+    
+    # Check quota
+    current_usage = get_company_storage_usage(ns_name)
+    requested_gi = float(storage_config.size.replace("Gi", "").replace("Mi", "")) 
+    if storage_config.size.endswith("Mi"):
+        requested_gi = requested_gi / 1024
+    
+    if current_usage + requested_gi > COMPANY_STORAGE_QUOTA:
+        raise HTTPException(status_code=400, detail=f"Storage quota exceeded. Available: {COMPANY_STORAGE_QUOTA - current_usage:.1f}Gi")
+    
+    try:
+        # Find the deployment
+        deployment = apps_v1.read_namespaced_deployment(name=deployment_name, namespace=ns_name)
+        
+        pvc_name = f"{deployment_name}-pvc"
+        
+        # Create PVC
+        pvc = client.V1PersistentVolumeClaim(
+            api_version="v1",
+            kind="PersistentVolumeClaim",
+            metadata=client.V1ObjectMeta(name=pvc_name, labels={"app": deployment_name}),
+            spec=client.V1PersistentVolumeClaimSpec(
+                access_modes=["ReadWriteOnce"],
+                resources=client.V1ResourceRequirements(
+                    requests={"storage": storage_config.size}
+                )
+            )
+        )
+        
+        try:
+            v1.create_namespaced_persistent_volume_claim(namespace=ns_name, body=pvc)
+        except client.exceptions.ApiException as e:
+            if e.status != 409:  # Ignore if already exists
+                raise
+        
+        # Determine mount path based on container type
+        container_name = deployment.spec.template.spec.containers[0].name
+        mount_path = "/data"
+        if container_name in ["mysql", "postgres", "postgresql"]:
+            mount_path = "/var/lib/mysql" if container_name == "mysql" else "/var/lib/postgresql/data"
+        elif container_name == "redis":
+            mount_path = "/data"
+        elif container_name == "wordpress":
+            mount_path = "/var/www/html/wp-content"
+        
+        # Add volume to deployment
+        volumes = deployment.spec.template.spec.volumes or []
+        volume_exists = any(v.name == pvc_name for v in volumes)
+        
+        if not volume_exists:
+            volumes.append(client.V1Volume(
+                name=pvc_name,
+                persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(claim_name=pvc_name)
+            ))
+            deployment.spec.template.spec.volumes = volumes
+            
+            # Add volume mount to container
+            container = deployment.spec.template.spec.containers[0]
+            mounts = container.volume_mounts or []
+            mounts.append(client.V1VolumeMount(name=pvc_name, mount_path=mount_path))
+            container.volume_mounts = mounts
+            
+            # Apply update
+            apps_v1.patch_namespaced_deployment(name=deployment_name, namespace=ns_name, body=deployment)
+        
+        return {"message": f"Storage {storage_config.size} added to {deployment_name}", "mount_path": mount_path, "pvc_name": pvc_name}
+        
+    except client.exceptions.ApiException as e:
+        if e.status == 404:
+            raise HTTPException(status_code=404, detail="Deployment not found")
+        raise HTTPException(status_code=500, detail=f"Error adding storage: {e.reason}")
+
+
+@app.get("/pods/{deployment_name}/storage")
+def get_deployment_storage(deployment_name: str, current_user: User = Depends(get_current_user)):
+    """Get storage info for a deployment"""
+    ns_name = get_namespace_name(current_user.company_name)
+    
+    try:
+        pvc_name = f"{deployment_name}-pvc"
+        pvc = v1.read_namespaced_persistent_volume_claim(name=pvc_name, namespace=ns_name)
+        
+        return {
+            "has_storage": True,
+            "pvc_name": pvc_name,
+            "size": pvc.spec.resources.requests.get("storage", "Unknown"),
+            "status": pvc.status.phase,
+            "access_modes": pvc.spec.access_modes
+        }
+    except client.exceptions.ApiException as e:
+        if e.status == 404:
+            return {"has_storage": False}
+        raise HTTPException(status_code=500, detail=f"Error checking storage: {e.reason}")
+
+
+# ==================== AUTO-SCALING API ====================
+
+@app.post("/pods/{deployment_name}/scaling")
+def configure_autoscaling(deployment_name: str, scaling_config: ScalingConfig, current_user: User = Depends(get_current_user)):
+    """Configure Horizontal Pod Autoscaler for a deployment"""
+    ns_name = get_namespace_name(current_user.company_name)
+    
+    if scaling_config.min_replicas < 1:
+        raise HTTPException(status_code=400, detail="Minimum replicas must be at least 1")
+    if scaling_config.max_replicas < scaling_config.min_replicas:
+        raise HTTPException(status_code=400, detail="Maximum replicas must be >= minimum replicas")
+    if scaling_config.max_replicas > 10:
+        raise HTTPException(status_code=400, detail="Maximum replicas cannot exceed 10")
+    
+    try:
+        # Verify deployment exists
+        deployment = apps_v1.read_namespaced_deployment(name=deployment_name, namespace=ns_name)
+        
+        # Create or update HPA
+        hpa_name = f"{deployment_name}-hpa"
+        
+        hpa = client.V1HorizontalPodAutoscaler(
+            api_version="autoscaling/v1",
+            kind="HorizontalPodAutoscaler",
+            metadata=client.V1ObjectMeta(name=hpa_name),
+            spec=client.V1HorizontalPodAutoscalerSpec(
+                scale_target_ref=client.V1CrossVersionObjectReference(
+                    api_version="apps/v1",
+                    kind="Deployment",
+                    name=deployment_name
+                ),
+                min_replicas=scaling_config.min_replicas,
+                max_replicas=scaling_config.max_replicas,
+                target_cpu_utilization_percentage=scaling_config.cpu_threshold
+            )
+        )
+        
+        try:
+            # Try to create
+            autoscaling_v1.create_namespaced_horizontal_pod_autoscaler(namespace=ns_name, body=hpa)
+        except client.exceptions.ApiException as e:
+            if e.status == 409:
+                # Already exists, update it
+                autoscaling_v1.replace_namespaced_horizontal_pod_autoscaler(name=hpa_name, namespace=ns_name, body=hpa)
+            else:
+                raise
+        
+        return {
+            "message": f"Auto-scaling configured for {deployment_name}",
+            "min_replicas": scaling_config.min_replicas,
+            "max_replicas": scaling_config.max_replicas,
+            "cpu_threshold": scaling_config.cpu_threshold
+        }
+        
+    except client.exceptions.ApiException as e:
+        if e.status == 404:
+            raise HTTPException(status_code=404, detail="Deployment not found")
+        raise HTTPException(status_code=500, detail=f"Error configuring scaling: {e.reason}")
+
+
+@app.get("/pods/{deployment_name}/scaling")
+def get_autoscaling_config(deployment_name: str, current_user: User = Depends(get_current_user)):
+    """Get current auto-scaling configuration for a deployment"""
+    ns_name = get_namespace_name(current_user.company_name)
+    
+    try:
+        hpa_name = f"{deployment_name}-hpa"
+        hpa = autoscaling_v1.read_namespaced_horizontal_pod_autoscaler(name=hpa_name, namespace=ns_name)
+        
+        return {
+            "enabled": True,
+            "min_replicas": hpa.spec.min_replicas,
+            "max_replicas": hpa.spec.max_replicas,
+            "cpu_threshold": hpa.spec.target_cpu_utilization_percentage,
+            "current_replicas": hpa.status.current_replicas,
+            "desired_replicas": hpa.status.desired_replicas
+        }
+    except client.exceptions.ApiException as e:
+        if e.status == 404:
+            return {"enabled": False}
+        raise HTTPException(status_code=500, detail=f"Error getting scaling config: {e.reason}")
+
+
+@app.delete("/pods/{deployment_name}/scaling")
+def disable_autoscaling(deployment_name: str, current_user: User = Depends(get_current_user)):
+    """Disable auto-scaling for a deployment"""
+    ns_name = get_namespace_name(current_user.company_name)
+    
+    try:
+        hpa_name = f"{deployment_name}-hpa"
+        autoscaling_v1.delete_namespaced_horizontal_pod_autoscaler(name=hpa_name, namespace=ns_name)
+        return {"message": f"Auto-scaling disabled for {deployment_name}"}
+    except client.exceptions.ApiException as e:
+        if e.status == 404:
+            return {"message": "Auto-scaling was not enabled"}
+        raise HTTPException(status_code=500, detail=f"Error disabling scaling: {e.reason}")
+
+
+# ==================== BACKUP & RESTORE API ====================
+
+@app.post("/pods/{deployment_name}/backup")
+def create_backup(deployment_name: str, current_user: User = Depends(get_current_user)):
+    """Create a backup of a database deployment"""
+    ns_name = get_namespace_name(current_user.company_name)
+    
+    try:
+        # Get the deployment to determine database type
+        deployment = apps_v1.read_namespaced_deployment(name=deployment_name, namespace=ns_name)
+        container = deployment.spec.template.spec.containers[0]
+        image = container.image.lower()
+        
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_name = f"backup-{deployment_name}-{timestamp}"
+        
+        # Determine backup command based on database type
+        if "mysql" in image:
+            backup_cmd = [
+                "sh", "-c",
+                f"mysqldump -u root -p$MYSQL_ROOT_PASSWORD --all-databases > /backup/{backup_name}.sql && echo 'Backup completed'"
+            ]
+            db_type = "mysql"
+        elif "postgres" in image:
+            backup_cmd = [
+                "sh", "-c", 
+                f"pg_dumpall -U postgres > /backup/{backup_name}.sql && echo 'Backup completed'"
+            ]
+            db_type = "postgres"
+        else:
+            raise HTTPException(status_code=400, detail="Backup is only supported for MySQL and PostgreSQL databases")
+        
+        # Create a backup PVC if it doesn't exist
+        backup_pvc_name = f"{deployment_name}-backups"
+        try:
+            v1.read_namespaced_persistent_volume_claim(name=backup_pvc_name, namespace=ns_name)
+        except client.exceptions.ApiException as e:
+            if e.status == 404:
+                backup_pvc = client.V1PersistentVolumeClaim(
+                    api_version="v1",
+                    kind="PersistentVolumeClaim",
+                    metadata=client.V1ObjectMeta(name=backup_pvc_name),
+                    spec=client.V1PersistentVolumeClaimSpec(
+                        access_modes=["ReadWriteOnce"],
+                        resources=client.V1ResourceRequirements(requests={"storage": "5Gi"})
+                    )
+                )
+                v1.create_namespaced_persistent_volume_claim(namespace=ns_name, body=backup_pvc)
+        
+        # Create a Job to perform the backup
+        job_name = f"backup-job-{deployment_name}-{timestamp}"
+        
+        # Get pod selector
+        pod_label = deployment.spec.selector.match_labels.get("app", deployment_name)
+        
+        # Find the running pod
+        pods = v1.list_namespaced_pod(namespace=ns_name, label_selector=f"app={pod_label}")
+        if not pods.items:
+            raise HTTPException(status_code=400, detail="No running pods found for this deployment")
+        
+        pod_name = pods.items[0].metadata.name
+        
+        # Execute backup command in the existing pod using kubectl exec approach
+        # We'll create a job that copies data from the database
+        
+        job = client.V1Job(
+            api_version="batch/v1",
+            kind="Job",
+            metadata=client.V1ObjectMeta(name=job_name, labels={"backup-for": deployment_name}),
+            spec=client.V1JobSpec(
+                ttl_seconds_after_finished=300,  # Clean up after 5 minutes
+                template=client.V1PodTemplateSpec(
+                    spec=client.V1PodSpec(
+                        restart_policy="Never",
+                        containers=[
+                            client.V1Container(
+                                name="backup",
+                                image=container.image,
+                                command=backup_cmd,
+                                env=container.env,
+                                volume_mounts=[
+                                    client.V1VolumeMount(name="backup-storage", mount_path="/backup")
+                                ]
+                            )
+                        ],
+                        volumes=[
+                            client.V1Volume(
+                                name="backup-storage",
+                                persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(
+                                    claim_name=backup_pvc_name
+                                )
+                            )
+                        ]
+                    )
+                )
+            )
+        )
+        
+        batch_v1.create_namespaced_job(namespace=ns_name, body=job)
+        
+        return {
+            "message": f"Backup job created for {deployment_name}",
+            "backup_name": backup_name,
+            "job_name": job_name,
+            "database_type": db_type
+        }
+        
+    except HTTPException:
+        raise
+    except client.exceptions.ApiException as e:
+        if e.status == 404:
+            raise HTTPException(status_code=404, detail="Deployment not found")
+        raise HTTPException(status_code=500, detail=f"Error creating backup: {e.reason}")
+
+
+@app.get("/pods/{deployment_name}/backups")
+def list_backups(deployment_name: str, current_user: User = Depends(get_current_user)):
+    """List all backups for a deployment"""
+    ns_name = get_namespace_name(current_user.company_name)
+    
+    try:
+        # List backup jobs
+        jobs = batch_v1.list_namespaced_job(namespace=ns_name, label_selector=f"backup-for={deployment_name}")
+        
+        backups = []
+        for job in jobs.items:
+            status = "Running"
+            if job.status.succeeded:
+                status = "Completed"
+            elif job.status.failed:
+                status = "Failed"
+            
+            backups.append({
+                "name": job.metadata.name,
+                "timestamp": job.metadata.creation_timestamp.isoformat() if job.metadata.creation_timestamp else "Unknown",
+                "status": status
+            })
+        
+        # Sort by timestamp descending
+        backups.sort(key=lambda x: x["timestamp"], reverse=True)
+        
+        return {"backups": backups}
+        
+    except client.exceptions.ApiException as e:
+        raise HTTPException(status_code=500, detail=f"Error listing backups: {e.reason}")
+
+
+@app.post("/pods/{deployment_name}/restore/{backup_name}")
+def restore_backup(deployment_name: str, backup_name: str, current_user: User = Depends(get_current_user)):
+    """Restore a database from a backup"""
+    ns_name = get_namespace_name(current_user.company_name)
+    
+    try:
+        # Get the deployment
+        deployment = apps_v1.read_namespaced_deployment(name=deployment_name, namespace=ns_name)
+        container = deployment.spec.template.spec.containers[0]
+        image = container.image.lower()
+        
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_pvc_name = f"{deployment_name}-backups"
+        
+        # Determine restore command
+        if "mysql" in image:
+            restore_cmd = [
+                "sh", "-c",
+                f"mysql -u root -p$MYSQL_ROOT_PASSWORD < /backup/{backup_name}.sql && echo 'Restore completed'"
+            ]
+        elif "postgres" in image:
+            restore_cmd = [
+                "sh", "-c",
+                f"psql -U postgres < /backup/{backup_name}.sql && echo 'Restore completed'"
+            ]
+        else:
+            raise HTTPException(status_code=400, detail="Restore is only supported for MySQL and PostgreSQL")
+        
+        # Create restore job
+        job_name = f"restore-job-{deployment_name}-{timestamp}"
+        
+        job = client.V1Job(
+            api_version="batch/v1",
+            kind="Job",
+            metadata=client.V1ObjectMeta(name=job_name),
+            spec=client.V1JobSpec(
+                ttl_seconds_after_finished=300,
+                template=client.V1PodTemplateSpec(
+                    spec=client.V1PodSpec(
+                        restart_policy="Never",
+                        containers=[
+                            client.V1Container(
+                                name="restore",
+                                image=container.image,
+                                command=restore_cmd,
+                                env=container.env,
+                                volume_mounts=[
+                                    client.V1VolumeMount(name="backup-storage", mount_path="/backup")
+                                ]
+                            )
+                        ],
+                        volumes=[
+                            client.V1Volume(
+                                name="backup-storage",
+                                persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(
+                                    claim_name=backup_pvc_name
+                                )
+                            )
+                        ]
+                    )
+                )
+            )
+        )
+        
+        batch_v1.create_namespaced_job(namespace=ns_name, body=job)
+        
+        return {
+            "message": f"Restore job created for {deployment_name}",
+            "backup_name": backup_name,
+            "job_name": job_name
+        }
+        
+    except HTTPException:
+        raise
+    except client.exceptions.ApiException as e:
+        if e.status == 404:
+            raise HTTPException(status_code=404, detail="Deployment or backup not found")
+        raise HTTPException(status_code=500, detail=f"Error restoring backup: {e.reason}")
+
+
+@app.post("/pods/{deployment_name}/auto-backup")
+def configure_auto_backup(deployment_name: str, current_user: User = Depends(get_current_user)):
+    """Configure automatic daily backups using a CronJob"""
+    ns_name = get_namespace_name(current_user.company_name)
+    
+    try:
+        # Get deployment info
+        deployment = apps_v1.read_namespaced_deployment(name=deployment_name, namespace=ns_name)
+        container = deployment.spec.template.spec.containers[0]
+        image = container.image.lower()
+        
+        backup_pvc_name = f"{deployment_name}-backups"
+        
+        # Ensure backup PVC exists
+        try:
+            v1.read_namespaced_persistent_volume_claim(name=backup_pvc_name, namespace=ns_name)
+        except client.exceptions.ApiException as e:
+            if e.status == 404:
+                backup_pvc = client.V1PersistentVolumeClaim(
+                    api_version="v1",
+                    kind="PersistentVolumeClaim",
+                    metadata=client.V1ObjectMeta(name=backup_pvc_name),
+                    spec=client.V1PersistentVolumeClaimSpec(
+                        access_modes=["ReadWriteOnce"],
+                        resources=client.V1ResourceRequirements(requests={"storage": "5Gi"})
+                    )
+                )
+                v1.create_namespaced_persistent_volume_claim(namespace=ns_name, body=backup_pvc)
+        
+        # Determine backup command
+        if "mysql" in image:
+            backup_cmd = [
+                "sh", "-c",
+                "mysqldump -u root -p$MYSQL_ROOT_PASSWORD --all-databases > /backup/backup-$(date +%Y%m%d-%H%M%S).sql"
+            ]
+        elif "postgres" in image:
+            backup_cmd = [
+                "sh", "-c",
+                "pg_dumpall -U postgres > /backup/backup-$(date +%Y%m%d-%H%M%S).sql"
+            ]
+        else:
+            raise HTTPException(status_code=400, detail="Auto-backup only supported for MySQL and PostgreSQL")
+        
+        cronjob_name = f"autobackup-{deployment_name}"
+        
+        # Create CronJob for daily backup at 2 AM
+        cronjob = client.V1CronJob(
+            api_version="batch/v1",
+            kind="CronJob",
+            metadata=client.V1ObjectMeta(name=cronjob_name),
+            spec=client.V1CronJobSpec(
+                schedule="0 2 * * *",  # Daily at 2 AM
+                concurrency_policy="Forbid",
+                successful_jobs_history_limit=3,
+                failed_jobs_history_limit=1,
+                job_template=client.V1JobTemplateSpec(
+                    spec=client.V1JobSpec(
+                        ttl_seconds_after_finished=86400,  # Clean up after 24 hours
+                        template=client.V1PodTemplateSpec(
+                            spec=client.V1PodSpec(
+                                restart_policy="OnFailure",
+                                containers=[
+                                    client.V1Container(
+                                        name="backup",
+                                        image=container.image,
+                                        command=backup_cmd,
+                                        env=container.env,
+                                        volume_mounts=[
+                                            client.V1VolumeMount(name="backup-storage", mount_path="/backup")
+                                        ]
+                                    )
+                                ],
+                                volumes=[
+                                    client.V1Volume(
+                                        name="backup-storage",
+                                        persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(
+                                            claim_name=backup_pvc_name
+                                        )
+                                    )
+                                ]
+                            )
+                        )
+                    )
+                )
+            )
+        )
+        
+        try:
+            batch_v1.create_namespaced_cron_job(namespace=ns_name, body=cronjob)
+        except client.exceptions.ApiException as e:
+            if e.status == 409:
+                # Already exists
+                return {"message": "Auto-backup already configured", "schedule": "Daily at 2 AM"}
+            raise
+        
+        return {
+            "message": f"Auto-backup configured for {deployment_name}",
+            "schedule": "Daily at 2 AM",
+            "cronjob_name": cronjob_name
+        }
+        
+    except HTTPException:
+        raise
+    except client.exceptions.ApiException as e:
+        raise HTTPException(status_code=500, detail=f"Error configuring auto-backup: {e.reason}")
+
+
+@app.delete("/pods/{deployment_name}/auto-backup")
+def disable_auto_backup(deployment_name: str, current_user: User = Depends(get_current_user)):
+    """Disable automatic backups"""
+    ns_name = get_namespace_name(current_user.company_name)
+    
+    try:
+        cronjob_name = f"autobackup-{deployment_name}"
+        batch_v1.delete_namespaced_cron_job(name=cronjob_name, namespace=ns_name)
+        return {"message": f"Auto-backup disabled for {deployment_name}"}
+    except client.exceptions.ApiException as e:
+        if e.status == 404:
+            return {"message": "Auto-backup was not configured"}
+        raise HTTPException(status_code=500, detail=f"Error disabling auto-backup: {e.reason}")
+
+
+@app.get("/pods/{deployment_name}/auto-backup")
+def get_auto_backup_status(deployment_name: str, current_user: User = Depends(get_current_user)):
+    """Check if auto-backup is enabled for a deployment"""
+    ns_name = get_namespace_name(current_user.company_name)
+    
+    try:
+        cronjob_name = f"autobackup-{deployment_name}"
+        cronjob = batch_v1.read_namespaced_cron_job(name=cronjob_name, namespace=ns_name)
+        
+        return {
+            "enabled": True,
+            "schedule": cronjob.spec.schedule,
+            "last_schedule": cronjob.status.last_schedule_time.isoformat() if cronjob.status.last_schedule_time else None
+        }
+    except client.exceptions.ApiException as e:
+        if e.status == 404:
+            return {"enabled": False}
+        raise HTTPException(status_code=500, detail=f"Error checking auto-backup status: {e.reason}")

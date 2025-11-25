@@ -30,9 +30,32 @@ import {
   List,
   ListItem,
   ListItemText,
-  Divider
+  Divider,
+  Slider,
+  Switch,
+  FormControlLabel,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper
 } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon, Refresh as RefreshIcon, Logout as LogoutIcon, CheckCircle as CheckCircleIcon, Memory as MemoryIcon, Settings as SettingsIcon } from '@mui/icons-material';
+import { 
+  Add as AddIcon, 
+  Delete as DeleteIcon, 
+  Refresh as RefreshIcon, 
+  Logout as LogoutIcon, 
+  CheckCircle as CheckCircleIcon, 
+  Memory as MemoryIcon, 
+  Settings as SettingsIcon,
+  Storage as StorageIcon,
+  Speed as SpeedIcon,
+  Backup as BackupIcon,
+  Restore as RestoreIcon,
+  Schedule as ScheduleIcon
+} from '@mui/icons-material';
 import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://192.168.154.114:30001";
@@ -61,6 +84,32 @@ function Dashboard() {
   const [newEnvKey, setNewEnvKey] = useState('');
   const [newEnvValue, setNewEnvValue] = useState('');
   const [envDeploymentName, setEnvDeploymentName] = useState('');
+  
+  // Storage state
+  const [storageOpen, setStorageOpen] = useState(false);
+  const [storageDeployment, setStorageDeployment] = useState('');
+  const [storageLoading, setStorageLoading] = useState(false);
+  const [storageQuota, setStorageQuota] = useState(null);
+  const [storageSize, setStorageSize] = useState(1);
+  const [storageMountPath, setStorageMountPath] = useState('/data');
+  const [currentStorage, setCurrentStorage] = useState(null);
+  
+  // Scaling state
+  const [scalingOpen, setScalingOpen] = useState(false);
+  const [scalingDeployment, setScalingDeployment] = useState('');
+  const [scalingLoading, setScalingLoading] = useState(false);
+  const [scalingConfig, setScalingConfig] = useState(null);
+  const [minReplicas, setMinReplicas] = useState(1);
+  const [maxReplicas, setMaxReplicas] = useState(5);
+  const [cpuThreshold, setCpuThreshold] = useState(80);
+  
+  // Backup state
+  const [backupOpen, setBackupOpen] = useState(false);
+  const [backupDeployment, setBackupDeployment] = useState('');
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backups, setBackups] = useState([]);
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState(false);
+  const [backupHour, setBackupHour] = useState(2);
   
   const navigate = useNavigate();
   const company = localStorage.getItem('company');
@@ -316,6 +365,197 @@ function Dashboard() {
     }
   };
 
+  // ==================== STORAGE HANDLERS ====================
+  const handleViewStorage = async (podName) => {
+    setStorageDeployment(podName);
+    setStorageLoading(true);
+    setStorageOpen(true);
+    setCurrentStorage(null);
+    setStorageSize(1);
+    setStorageMountPath('/data');
+    
+    const token = localStorage.getItem('token');
+    try {
+      // Fetch quota and current storage in parallel
+      const [quotaRes, storageRes] = await Promise.all([
+        axios.get(`${BACKEND_URL}/storage/quota`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get(`${BACKEND_URL}/pods/${podName}/storage`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }).catch(() => ({ data: null }))
+      ]);
+      setStorageQuota(quotaRes.data);
+      setCurrentStorage(storageRes.data);
+    } catch (error) {
+      console.error("Error fetching storage info:", error);
+    } finally {
+      setStorageLoading(false);
+    }
+  };
+
+  const handleAddStorage = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(`${BACKEND_URL}/pods/${storageDeployment}/storage`, {
+        size_gb: storageSize,
+        mount_path: storageMountPath
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      alert(`Storage (${storageSize}Gi) added successfully! Pod will restart.`);
+      setStorageOpen(false);
+      fetchPods();
+    } catch (error) {
+      console.error("Error adding storage:", error);
+      alert(`Failed to add storage: ${error.response?.data?.detail || error.message}`);
+    }
+  };
+
+  // ==================== SCALING HANDLERS ====================
+  const handleViewScaling = async (podName) => {
+    setScalingDeployment(podName);
+    setScalingLoading(true);
+    setScalingOpen(true);
+    setScalingConfig(null);
+    setMinReplicas(1);
+    setMaxReplicas(5);
+    setCpuThreshold(80);
+    
+    const token = localStorage.getItem('token');
+    try {
+      const response = await axios.get(`${BACKEND_URL}/pods/${podName}/scaling`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.data.enabled) {
+        setScalingConfig(response.data);
+        setMinReplicas(response.data.min_replicas);
+        setMaxReplicas(response.data.max_replicas);
+        setCpuThreshold(response.data.cpu_target);
+      }
+    } catch (error) {
+      console.error("Error fetching scaling config:", error);
+    } finally {
+      setScalingLoading(false);
+    }
+  };
+
+  const handleSaveScaling = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(`${BACKEND_URL}/pods/${scalingDeployment}/scaling`, {
+        min_replicas: minReplicas,
+        max_replicas: maxReplicas,
+        cpu_target_percent: cpuThreshold
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      alert("Auto-scaling configured successfully!");
+      setScalingOpen(false);
+    } catch (error) {
+      console.error("Error configuring scaling:", error);
+      alert(`Failed to configure scaling: ${error.response?.data?.detail || error.message}`);
+    }
+  };
+
+  const handleDisableScaling = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`${BACKEND_URL}/pods/${scalingDeployment}/scaling`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      alert("Auto-scaling disabled");
+      setScalingConfig(null);
+    } catch (error) {
+      console.error("Error disabling scaling:", error);
+      alert(`Failed to disable scaling: ${error.response?.data?.detail || error.message}`);
+    }
+  };
+
+  // ==================== BACKUP HANDLERS ====================
+  const handleViewBackups = async (podName) => {
+    setBackupDeployment(podName);
+    setBackupLoading(true);
+    setBackupOpen(true);
+    setBackups([]);
+    setAutoBackupEnabled(false);
+    
+    const token = localStorage.getItem('token');
+    try {
+      const [backupsRes, autoBackupRes] = await Promise.all([
+        axios.get(`${BACKEND_URL}/pods/${podName}/backups`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get(`${BACKEND_URL}/pods/${podName}/auto-backup`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }).catch(() => ({ data: { enabled: false } }))
+      ]);
+      setBackups(backupsRes.data.backups || []);
+      setAutoBackupEnabled(autoBackupRes.data.enabled || false);
+      if (autoBackupRes.data.hour) {
+        setBackupHour(autoBackupRes.data.hour);
+      }
+    } catch (error) {
+      console.error("Error fetching backups:", error);
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
+  const handleCreateBackup = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(`${BACKEND_URL}/pods/${backupDeployment}/backup`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      alert("Backup created successfully!");
+      handleViewBackups(backupDeployment);
+    } catch (error) {
+      console.error("Error creating backup:", error);
+      alert(`Failed to create backup: ${error.response?.data?.detail || error.message}`);
+    }
+  };
+
+  const handleRestoreBackup = async (backupName) => {
+    if (!window.confirm(`Are you sure you want to restore from "${backupName}"? This will overwrite current data.`)) return;
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(`${BACKEND_URL}/pods/${backupDeployment}/restore/${backupName}`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      alert("Restore initiated! Pod will restart with restored data.");
+      setBackupOpen(false);
+      fetchPods();
+    } catch (error) {
+      console.error("Error restoring backup:", error);
+      alert(`Failed to restore backup: ${error.response?.data?.detail || error.message}`);
+    }
+  };
+
+  const handleToggleAutoBackup = async () => {
+    const token = localStorage.getItem('token');
+    try {
+      if (autoBackupEnabled) {
+        await axios.delete(`${BACKEND_URL}/pods/${backupDeployment}/auto-backup`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setAutoBackupEnabled(false);
+        alert("Auto-backup disabled");
+      } else {
+        await axios.post(`${BACKEND_URL}/pods/${backupDeployment}/auto-backup`, {
+          hour: backupHour
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setAutoBackupEnabled(true);
+        alert(`Auto-backup enabled! Daily backups at ${backupHour}:00 UTC`);
+      }
+    } catch (error) {
+      console.error("Error toggling auto-backup:", error);
+      alert(`Failed to toggle auto-backup: ${error.response?.data?.detail || error.message}`);
+    }
+  };
+
   const calculateTotalCost = () => {
     return pods.reduce((total, pod) => total + (pod.cost || 0), 0).toFixed(2);
   };
@@ -518,6 +758,38 @@ function Dashboard() {
                       Env Vars
                     </Button>
                   </Box>
+
+                  <Box display="flex" gap={1} mb={2}>
+                    <Button 
+                      variant="outlined" 
+                      size="small"
+                      startIcon={<StorageIcon />}
+                      onClick={() => handleViewStorage(pod.name)}
+                      sx={{ flex: 1, borderColor: 'rgba(255,255,255,0.2)', color: 'text.secondary' }}
+                    >
+                      Storage
+                    </Button>
+                    <Button 
+                      variant="outlined" 
+                      size="small"
+                      startIcon={<SpeedIcon />}
+                      onClick={() => handleViewScaling(pod.name)}
+                      sx={{ flex: 1, borderColor: 'rgba(255,255,255,0.2)', color: 'text.secondary' }}
+                    >
+                      Scaling
+                    </Button>
+                  </Box>
+
+                  <Button 
+                    variant="outlined" 
+                    fullWidth 
+                    size="small"
+                    startIcon={<BackupIcon />}
+                    onClick={() => handleViewBackups(pod.name)}
+                    sx={{ mb: 2, borderColor: 'rgba(255,255,255,0.2)', color: 'text.secondary' }}
+                  >
+                    Backup & Restore
+                  </Button>
 
                   {pod.message && (
                       <Alert severity={pod.message.includes('Healthy') ? 'success' : 'error'} sx={{ mt: 1, py: 0.5, fontSize: '0.8rem' }}>
@@ -829,6 +1101,331 @@ function Dashboard() {
           <Button onClick={handleSaveEnvVars} variant="contained" color="primary">
             Save & Restart Pod
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Storage Dialog */}
+      <Dialog open={storageOpen} onClose={() => setStorageOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { bgcolor: '#0a1929' } }}>
+        <DialogTitle sx={{ color: 'white', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <Box display="flex" alignItems="center" gap={1}>
+            <StorageIcon />
+            Persistent Storage: {storageDeployment}
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          {storageLoading ? (
+            <Box display="flex" justifyContent="center" alignItems="center" py={4}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Box>
+              {/* Storage Quota */}
+              {storageQuota && (
+                <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 1 }}>
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    Company Storage Quota
+                  </Typography>
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Typography variant="body1" color="text.primary">
+                      {storageQuota.used_gb}Gi / {storageQuota.total_gb}Gi used
+                    </Typography>
+                    <Typography variant="body2" color={storageQuota.available_gb < 5 ? 'error.main' : 'success.main'}>
+                      {storageQuota.available_gb}Gi available
+                    </Typography>
+                  </Box>
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={(storageQuota.used_gb / storageQuota.total_gb) * 100} 
+                    sx={{ mt: 1, height: 8, borderRadius: 1 }}
+                    color={storageQuota.available_gb < 5 ? 'error' : 'primary'}
+                  />
+                </Box>
+              )}
+
+              {/* Current Storage */}
+              {currentStorage && currentStorage.volumes && currentStorage.volumes.length > 0 ? (
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    Current Storage
+                  </Typography>
+                  {currentStorage.volumes.map((vol, idx) => (
+                    <Box key={idx} sx={{ p: 1.5, bgcolor: 'rgba(0,255,0,0.1)', borderRadius: 1, mb: 1 }}>
+                      <Typography variant="body2" color="success.main">
+                        ✓ {vol.size || 'N/A'} mounted at {vol.mount_path}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        PVC: {vol.pvc_name}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              ) : (
+                <Alert severity="info" sx={{ mb: 3 }}>
+                  No persistent storage attached. Add storage for databases or data that needs to survive restarts.
+                </Alert>
+              )}
+
+              {/* Add Storage Form */}
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Add Persistent Storage
+              </Typography>
+              <Box sx={{ mb: 2 }}>
+                <Typography gutterBottom>Size: {storageSize}Gi</Typography>
+                <Slider
+                  value={storageSize}
+                  onChange={(e, v) => setStorageSize(v)}
+                  min={1}
+                  max={storageQuota ? Math.min(20, storageQuota.available_gb) : 20}
+                  marks={[
+                    { value: 1, label: '1Gi' },
+                    { value: 5, label: '5Gi' },
+                    { value: 10, label: '10Gi' },
+                    { value: 20, label: '20Gi' }
+                  ]}
+                />
+              </Box>
+              <TextField
+                fullWidth
+                size="small"
+                label="Mount Path"
+                value={storageMountPath}
+                onChange={(e) => setStorageMountPath(e.target.value)}
+                helperText="Directory inside container where storage will be mounted"
+                sx={{ mb: 2 }}
+              />
+              <Alert severity="warning">
+                Adding storage will restart the pod. Data in the mount path will be preserved across restarts.
+              </Alert>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          <Button onClick={() => setStorageOpen(false)} color="inherit">Cancel</Button>
+          <Button 
+            onClick={handleAddStorage} 
+            variant="contained" 
+            color="primary"
+            disabled={!storageQuota || storageQuota.available_gb < storageSize}
+          >
+            Add Storage
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Scaling Dialog */}
+      <Dialog open={scalingOpen} onClose={() => setScalingOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { bgcolor: '#0a1929' } }}>
+        <DialogTitle sx={{ color: 'white', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <Box display="flex" alignItems="center" gap={1}>
+            <SpeedIcon />
+            Auto-Scaling: {scalingDeployment}
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          {scalingLoading ? (
+            <Box display="flex" justifyContent="center" alignItems="center" py={4}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Box>
+              {scalingConfig ? (
+                <Alert severity="success" sx={{ mb: 3 }}>
+                  Auto-scaling is <strong>enabled</strong>. Current replicas: {scalingConfig.current_replicas}
+                </Alert>
+              ) : (
+                <Alert severity="info" sx={{ mb: 3 }}>
+                  Auto-scaling is not configured. Enable it to automatically scale based on CPU usage.
+                </Alert>
+              )}
+
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Minimum Replicas: {minReplicas}
+              </Typography>
+              <Slider
+                value={minReplicas}
+                onChange={(e, v) => setMinReplicas(v)}
+                min={1}
+                max={10}
+                marks
+                sx={{ mb: 3 }}
+              />
+
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Maximum Replicas: {maxReplicas}
+              </Typography>
+              <Slider
+                value={maxReplicas}
+                onChange={(e, v) => setMaxReplicas(v)}
+                min={minReplicas}
+                max={20}
+                marks
+                sx={{ mb: 3 }}
+              />
+
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                CPU Target: {cpuThreshold}%
+              </Typography>
+              <Slider
+                value={cpuThreshold}
+                onChange={(e, v) => setCpuThreshold(v)}
+                min={10}
+                max={100}
+                marks={[
+                  { value: 50, label: '50%' },
+                  { value: 80, label: '80%' }
+                ]}
+                sx={{ mb: 3 }}
+              />
+
+              <Alert severity="info">
+                When CPU usage exceeds {cpuThreshold}%, new replicas will be created (up to {maxReplicas}).
+              </Alert>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          {scalingConfig && (
+            <Button onClick={handleDisableScaling} color="error">
+              Disable Scaling
+            </Button>
+          )}
+          <Box sx={{ flex: 1 }} />
+          <Button onClick={() => setScalingOpen(false)} color="inherit">Cancel</Button>
+          <Button onClick={handleSaveScaling} variant="contained" color="primary">
+            {scalingConfig ? 'Update' : 'Enable'} Auto-Scaling
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Backup & Restore Dialog */}
+      <Dialog open={backupOpen} onClose={() => setBackupOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: '#0a1929' } }}>
+        <DialogTitle sx={{ color: 'white', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <Box display="flex" alignItems="center" gap={1}>
+            <BackupIcon />
+            Backup & Restore: {backupDeployment}
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          {backupLoading ? (
+            <Box display="flex" justifyContent="center" alignItems="center" py={4}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Box>
+              {/* Auto-Backup Toggle */}
+              <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 1 }}>
+                <Box display="flex" justifyContent="space-between" alignItems="center">
+                  <Box>
+                    <Typography variant="subtitle1" color="text.primary">
+                      <ScheduleIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
+                      Automatic Daily Backups
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Runs daily at {backupHour}:00 UTC
+                    </Typography>
+                  </Box>
+                  <FormControlLabel
+                    control={
+                      <Switch 
+                        checked={autoBackupEnabled} 
+                        onChange={handleToggleAutoBackup}
+                        color="primary"
+                      />
+                    }
+                    label={autoBackupEnabled ? 'Enabled' : 'Disabled'}
+                  />
+                </Box>
+                {!autoBackupEnabled && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Backup Hour (UTC): {backupHour}:00
+                    </Typography>
+                    <Slider
+                      value={backupHour}
+                      onChange={(e, v) => setBackupHour(v)}
+                      min={0}
+                      max={23}
+                      marks={[
+                        { value: 0, label: '0:00' },
+                        { value: 12, label: '12:00' },
+                        { value: 23, label: '23:00' }
+                      ]}
+                    />
+                  </Box>
+                )}
+              </Box>
+
+              {/* Manual Backup */}
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                <Typography variant="subtitle1" color="text.primary">
+                  Available Backups
+                </Typography>
+                <Button 
+                  variant="contained" 
+                  size="small" 
+                  startIcon={<BackupIcon />}
+                  onClick={handleCreateBackup}
+                >
+                  Create Backup Now
+                </Button>
+              </Box>
+
+              {/* Backup List */}
+              {backups.length === 0 ? (
+                <Alert severity="info">
+                  No backups available. Create a backup to protect your data.
+                </Alert>
+              ) : (
+                <TableContainer component={Paper} sx={{ bgcolor: 'rgba(0,0,0,0.3)' }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ color: 'text.secondary' }}>Backup Name</TableCell>
+                        <TableCell sx={{ color: 'text.secondary' }}>Created</TableCell>
+                        <TableCell sx={{ color: 'text.secondary' }}>Status</TableCell>
+                        <TableCell sx={{ color: 'text.secondary' }} align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {backups.map((backup) => (
+                        <TableRow key={backup.name}>
+                          <TableCell sx={{ color: 'text.primary', fontFamily: 'monospace' }}>
+                            {backup.name}
+                          </TableCell>
+                          <TableCell sx={{ color: 'text.secondary' }}>
+                            {backup.created_at ? new Date(backup.created_at).toLocaleString() : 'N/A'}
+                          </TableCell>
+                          <TableCell>
+                            <Chip 
+                              label={backup.status || 'Unknown'} 
+                              size="small" 
+                              color={backup.status === 'Completed' ? 'success' : 'warning'}
+                            />
+                          </TableCell>
+                          <TableCell align="right">
+                            <Button
+                              size="small"
+                              startIcon={<RestoreIcon />}
+                              onClick={() => handleRestoreBackup(backup.name)}
+                              sx={{ color: 'primary.main' }}
+                            >
+                              Restore
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+
+              <Alert severity="warning" sx={{ mt: 2 }}>
+                Restoring a backup will overwrite current data and restart the pod.
+              </Alert>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          <Button onClick={() => setBackupOpen(false)} color="inherit">Close</Button>
         </DialogActions>
       </Dialog>
     </Box>
