@@ -187,29 +187,45 @@ function Dashboard() {
     setMetricsOpen(true);
     setCurrentMetrics(null);
     
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setCurrentMetrics({ error: "Not logged in" });
+      setMetricsLoading(false);
+      return;
+    }
+    
+    // First test if backend is reachable at all
     try {
-      const token = localStorage.getItem('token');
-      // Don't encode - the pod name should be URL-safe already
+      await axios.get(`${BACKEND_URL}/health`, { timeout: 5000 });
+    } catch (healthError) {
+      console.error("Backend health check failed:", healthError);
+      setCurrentMetrics({ error: "Backend is not reachable. Please check if the service is running." });
+      setMetricsLoading(false);
+      return;
+    }
+    
+    try {
       console.log(`Fetching metrics for: ${podName}`);
-      console.log(`URL: ${BACKEND_URL}/pods/${podName}/metrics`);
-      
       const response = await axios.get(`${BACKEND_URL}/pods/${podName}/metrics`, {
         headers: { Authorization: `Bearer ${token}` },
-        timeout: 15000  // 15 second timeout
+        timeout: 15000
       });
       console.log("Metrics response:", response.data);
       setCurrentMetrics(response.data);
     } catch (error) {
       console.error("Error fetching metrics:", error);
-      console.error("Error details:", error.response, error.request, error.code);
+      console.error("Status:", error.response?.status);
+      console.error("Data:", error.response?.data);
       
       let errorMsg = "Failed to fetch metrics";
-      if (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED') {
-        errorMsg = "Cannot connect to backend. Please try again later.";
+      if (error.response?.status === 404) {
+        errorMsg = "Metrics endpoint not found. Backend may need to be updated.";
       } else if (error.response?.status === 401) {
         errorMsg = "Session expired. Please login again.";
       } else if (error.response?.data?.detail) {
         errorMsg = error.response.data.detail;
+      } else if (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED') {
+        errorMsg = "Cannot connect to metrics endpoint.";
       } else if (error.message) {
         errorMsg = error.message;
       }
