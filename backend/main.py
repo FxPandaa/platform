@@ -42,6 +42,11 @@ custom_api = client.CustomObjectsApi()  # For metrics API
 
 app = FastAPI()
 
+# Health check endpoint
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -756,6 +761,15 @@ def get_pod_metrics(pod_name: str, current_user: User = Depends(get_current_user
     
     print(f"[METRICS] Fetching metrics for pod: {pod_name} in namespace: {ns_name}")
     
+    # Default response
+    default_response = PodMetrics(
+        name=pod_name,
+        cpu_usage="N/A",
+        memory_usage="N/A",
+        cpu_percent=None,
+        memory_percent=None
+    )
+    
     try:
         # First verify the pod exists
         try:
@@ -763,7 +777,10 @@ def get_pod_metrics(pod_name: str, current_user: User = Depends(get_current_user
             print(f"[METRICS] Pod found: {pod.metadata.name}")
         except client.exceptions.ApiException as e:
             print(f"[METRICS] Pod not found: {e}")
-            raise HTTPException(status_code=404, detail=f"Pod {pod_name} not found")
+            return default_response
+        except Exception as e:
+            print(f"[METRICS] Error reading pod: {e}")
+            return default_response
         
         # Try to get metrics from metrics.k8s.io API
         try:
@@ -774,49 +791,44 @@ def get_pod_metrics(pod_name: str, current_user: User = Depends(get_current_user
                 plural="pods",
                 name=pod_name
             )
-            print(f"[METRICS] Got metrics response: {metrics}")
+            print(f"[METRICS] Got metrics response")
         except client.exceptions.ApiException as e:
             print(f"[METRICS] Metrics API error: {e.status} - {e.reason}")
-            if e.status == 404:
-                # Metrics-server might not be installed or pod metrics not ready
-                return PodMetrics(
-                    name=pod_name,
-                    cpu_usage="N/A",
-                    memory_usage="N/A",
-                    cpu_percent=None,
-                    memory_percent=None
-                )
-            raise
+            return default_response
+        except Exception as e:
+            print(f"[METRICS] Error getting metrics: {e}")
+            return default_response
         
         # Parse metrics from response
-        cpu_usage = "0m"
-        memory_usage = "0Mi"
         total_cpu_nano = 0
         total_memory_bytes = 0
         
-        if "containers" in metrics:
-            for container in metrics["containers"]:
-                usage = container.get("usage", {})
-                print(f"[METRICS] Container usage: {usage}")
-                
-                # CPU is in nanocores (e.g., "12345678n") or millicores (e.g., "100m")
-                cpu_str = usage.get("cpu", "0n")
+        containers = metrics.get("containers", [])
+        if not containers:
+            print("[METRICS] No containers in metrics response")
+            return default_response
+            
+        for container in containers:
+            usage = container.get("usage", {})
+            print(f"[METRICS] Container usage: {usage}")
+            
+            # CPU is in nanocores (e.g., "12345678n") or millicores (e.g., "100m")
+            cpu_str = usage.get("cpu", "0n")
+            try:
                 if cpu_str.endswith("n"):
                     total_cpu_nano += int(cpu_str[:-1])
                 elif cpu_str.endswith("m"):
                     total_cpu_nano += int(cpu_str[:-1]) * 1000000
                 elif cpu_str.endswith("u"):
-                    # Microcores
                     total_cpu_nano += int(cpu_str[:-1]) * 1000
                 else:
-                    try:
-                        # Assume cores
-                        total_cpu_nano += int(float(cpu_str) * 1000000000)
-                    except:
-                        pass
-                
-                # Memory is in bytes (e.g., "12345Ki", "100Mi", "1Gi")
-                mem_str = usage.get("memory", "0")
+                    total_cpu_nano += int(float(cpu_str) * 1000000000)
+            except (ValueError, TypeError) as e:
+                print(f"[METRICS] Error parsing CPU: {e}")
+            
+            # Memory is in bytes (e.g., "12345Ki", "100Mi", "1Gi")
+            mem_str = usage.get("memory", "0")
+            try:
                 if mem_str.endswith("Ki"):
                     total_memory_bytes += int(mem_str[:-2]) * 1024
                 elif mem_str.endswith("Mi"):
@@ -830,44 +842,49 @@ def get_pod_metrics(pod_name: str, current_user: User = Depends(get_current_user
                 elif mem_str.endswith("G"):
                     total_memory_bytes += int(mem_str[:-1]) * 1000000000
                 else:
-                    try:
-                        total_memory_bytes += int(mem_str)
-                    except:
-                        pass
-            
-            # Convert to human readable
-            cpu_milli = total_cpu_nano / 1000000
-            cpu_usage = f"{int(cpu_milli)}m"
-            
-            memory_mi = total_memory_bytes / (1024 * 1024)
-            memory_usage = f"{int(memory_mi)}Mi"
-            
-            print(f"[METRICS] Parsed: CPU={cpu_usage}, Memory={memory_usage}")
+                    total_memory_bytes += int(mem_str)
+            except (ValueError, TypeError) as e:
+                print(f"[METRICS] Error parsing memory: {e}")
+        
+        # Convert to human readable
+        cpu_milli = total_cpu_nano / 1000000
+        cpu_usage = f"{int(cpu_milli)}m"
+        
+        memory_mi = total_memory_bytes / (1024 * 1024)
+        memory_usage = f"{int(memory_mi)}Mi"
+        
+        print(f"[METRICS] Parsed: CPU={cpu_usage}, Memory={memory_usage}")
         
         # Get resource limits from pod spec for percentage calculation
         cpu_percent = None
         memory_percent = None
         
-        for container in pod.spec.containers:
-            if container.resources and container.resources.limits:
-                limits = container.resources.limits
-                if "cpu" in limits:
-                    limit_cpu = limits["cpu"]
-                    if limit_cpu.endswith("m"):
-                        limit_milli = int(limit_cpu[:-1])
-                    else:
-                        limit_milli = int(float(limit_cpu) * 1000)
-                    cpu_percent = round((cpu_milli / limit_milli) * 100, 1) if limit_milli > 0 else None
-                
-                if "memory" in limits:
-                    limit_mem = limits["memory"]
-                    if limit_mem.endswith("Mi"):
-                        limit_bytes = int(limit_mem[:-2]) * 1024 * 1024
-                    elif limit_mem.endswith("Gi"):
-                        limit_bytes = int(limit_mem[:-2]) * 1024 * 1024 * 1024
-                    else:
-                        limit_bytes = int(limit_mem)
-                    memory_percent = round((total_memory_bytes / limit_bytes) * 100, 1) if limit_bytes > 0 else None
+        if pod.spec.containers:
+            for container in pod.spec.containers:
+                if container.resources and container.resources.limits:
+                    limits = container.resources.limits
+                    try:
+                        if "cpu" in limits:
+                            limit_cpu = limits["cpu"]
+                            if limit_cpu.endswith("m"):
+                                limit_milli = int(limit_cpu[:-1])
+                            else:
+                                limit_milli = int(float(limit_cpu) * 1000)
+                            if limit_milli > 0:
+                                cpu_percent = round((cpu_milli / limit_milli) * 100, 1)
+                        
+                        if "memory" in limits:
+                            limit_mem = limits["memory"]
+                            if limit_mem.endswith("Mi"):
+                                limit_bytes = int(limit_mem[:-2]) * 1024 * 1024
+                            elif limit_mem.endswith("Gi"):
+                                limit_bytes = int(limit_mem[:-2]) * 1024 * 1024 * 1024
+                            else:
+                                limit_bytes = int(limit_mem)
+                            if limit_bytes > 0:
+                                memory_percent = round((total_memory_bytes / limit_bytes) * 100, 1)
+                    except (ValueError, TypeError) as e:
+                        print(f"[METRICS] Error calculating percentages: {e}")
         
         return PodMetrics(
             name=pod_name,
@@ -877,20 +894,11 @@ def get_pod_metrics(pod_name: str, current_user: User = Depends(get_current_user
             memory_percent=memory_percent
         )
         
-    except HTTPException:
-        raise
     except Exception as e:
         print(f"[METRICS] Unexpected error: {e}")
         import traceback
         traceback.print_exc()
-        # Return N/A instead of crashing
-        return PodMetrics(
-            name=pod_name,
-            cpu_usage="N/A",
-            memory_usage="N/A",
-            cpu_percent=None,
-            memory_percent=None
-        )
+        return default_response
 
 
 # ==================== ENVIRONMENT VARIABLES API ====================
