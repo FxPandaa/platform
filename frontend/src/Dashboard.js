@@ -40,7 +40,11 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper
+  Paper,
+  Snackbar,
+  Fade,
+  Tooltip,
+  Avatar
 } from '@mui/material';
 import { 
   Add as AddIcon, 
@@ -54,7 +58,12 @@ import {
   Speed as SpeedIcon,
   Backup as BackupIcon,
   Restore as RestoreIcon,
-  Schedule as ScheduleIcon
+  Schedule as ScheduleIcon,
+  Close as CloseIcon,
+  Article as ArticleIcon,
+  OpenInNew as OpenInNewIcon,
+  CloudDone as CloudDoneIcon,
+  Business as BusinessIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 
@@ -110,6 +119,22 @@ function Dashboard() {
   const [backups, setBackups] = useState([]);
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(false);
   const [backupHour, setBackupHour] = useState(2);
+  
+  // Snackbar state for professional notifications
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success', // 'success', 'error', 'warning', 'info'
+    title: ''
+  });
+
+  const showNotification = (title, message, severity = 'success') => {
+    setSnackbar({ open: true, message, severity, title });
+  };
+
+  const closeNotification = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
   
   const navigate = useNavigate();
   const company = localStorage.getItem('company');
@@ -178,7 +203,7 @@ function Dashboard() {
         errorMsg = error.message;
       }
       
-      alert(`Failed to create pod:\n${errorMsg}`);
+      showNotification('Pod Creation Failed', errorMsg, 'error');
     }
   };
 
@@ -192,7 +217,7 @@ function Dashboard() {
       });
       handleLogout();
     } catch (error) {
-      alert(`Failed to delete company: ${error.response?.data?.detail || error.message}`);
+      showNotification('Delete Failed', error.response?.data?.detail || error.message, 'error');
     }
   };
 
@@ -204,15 +229,16 @@ function Dashboard() {
         headers: { Authorization: `Bearer ${token}` }
       });
       fetchPods();
+      showNotification('Pod Deleted', `${podName} has been deleted successfully`, 'success');
     } catch (error) {
-      alert('Failed to delete pod');
+      showNotification('Delete Failed', 'Failed to delete pod', 'error');
     }
   };
 
   const handleViewLogs = async (podName) => {
     const pod = pods.find(p => p.name === podName);
     if (pod && pod.status !== 'Running' && pod.status !== 'Succeeded') {
-        alert(`Cannot fetch logs. Pod status is ${pod.status}. \nDetails: ${pod.message || 'Container is not running.'}`);
+        showNotification('Cannot Fetch Logs', `Pod status is ${pod.status}. ${pod.message || 'Container is not running.'}`, 'warning');
         return;
     }
     try {
@@ -225,7 +251,7 @@ function Dashboard() {
       setLogsOpen(true);
     } catch (error) {
       console.error(error);
-      alert("Failed to fetch logs. The container might be starting or crashed.");
+      showNotification('Logs Error', 'Failed to fetch logs. The container might be starting or crashed.', 'warning');
     }
   };
 
@@ -323,7 +349,7 @@ function Dashboard() {
       setEnvDeploymentName(response.data.deployment_name || podName);
     } catch (error) {
       console.error("Error fetching env vars:", error);
-      alert("Failed to fetch environment variables");
+      showNotification('Error', 'Failed to fetch environment variables', 'error');
       setEnvOpen(false);
     } finally {
       setEnvLoading(false);
@@ -356,12 +382,12 @@ function Dashboard() {
         { env_vars: currentEnvVars },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      alert("Environment variables updated. The pod will restart with new values.");
+      showNotification('Environment Updated', 'Environment variables updated. The pod will restart with new values.', 'success');
       setEnvOpen(false);
       fetchPods();
     } catch (error) {
       console.error("Error saving env vars:", error);
-      alert(`Failed to save environment variables: ${error.response?.data?.detail || error.message}`);
+      showNotification('Save Failed', error.response?.data?.detail || error.message, 'error');
     }
   };
 
@@ -403,12 +429,12 @@ function Dashboard() {
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      alert(`Storage (${storageSize}Gi) added successfully! Pod will restart.`);
+      showNotification('Storage Added', `${storageSize}Gi storage added successfully! Pod will restart.`, 'success');
       setStorageOpen(false);
       fetchPods();
     } catch (error) {
       console.error("Error adding storage:", error);
-      alert(`Failed to add storage: ${error.response?.data?.detail || error.message}`);
+      showNotification('Storage Error', error.response?.data?.detail || error.message, 'error');
     }
   };
 
@@ -450,11 +476,11 @@ function Dashboard() {
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      alert("Auto-scaling configured successfully!");
+      showNotification('Scaling Configured', 'Auto-scaling has been configured successfully!', 'success');
       setScalingOpen(false);
     } catch (error) {
       console.error("Error configuring scaling:", error);
-      alert(`Failed to configure scaling: ${error.response?.data?.detail || error.message}`);
+      showNotification('Scaling Error', error.response?.data?.detail || error.message, 'error');
     }
   };
 
@@ -464,11 +490,11 @@ function Dashboard() {
       await axios.delete(`${BACKEND_URL}/pods/${scalingDeployment}/scaling`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      alert("Auto-scaling disabled");
+      showNotification('Scaling Disabled', 'Auto-scaling has been disabled', 'info');
       setScalingConfig(null);
     } catch (error) {
       console.error("Error disabling scaling:", error);
-      alert(`Failed to disable scaling: ${error.response?.data?.detail || error.message}`);
+      showNotification('Scaling Error', error.response?.data?.detail || error.message, 'error');
     }
   };
 
@@ -508,11 +534,11 @@ function Dashboard() {
       await axios.post(`${BACKEND_URL}/pods/${backupDeployment}/backup`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      alert("Backup created successfully!");
+      showNotification('Backup Created', 'Backup has been created successfully!', 'success');
       handleViewBackups(backupDeployment);
     } catch (error) {
       console.error("Error creating backup:", error);
-      alert(`Failed to create backup: ${error.response?.data?.detail || error.message}`);
+      showNotification('Backup Failed', error.response?.data?.detail || error.message, 'error');
     }
   };
 
@@ -523,12 +549,12 @@ function Dashboard() {
       await axios.post(`${BACKEND_URL}/pods/${backupDeployment}/restore/${backupName}`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      alert("Restore initiated! Pod will restart with restored data.");
+      showNotification('Restore Started', 'Restore initiated! Pod will restart with restored data.', 'success');
       setBackupOpen(false);
       fetchPods();
     } catch (error) {
       console.error("Error restoring backup:", error);
-      alert(`Failed to restore backup: ${error.response?.data?.detail || error.message}`);
+      showNotification('Restore Failed', error.response?.data?.detail || error.message, 'error');
     }
   };
 
@@ -540,7 +566,7 @@ function Dashboard() {
           headers: { Authorization: `Bearer ${token}` }
         });
         setAutoBackupEnabled(false);
-        alert("Auto-backup disabled");
+        showNotification('Auto-Backup Disabled', 'Automatic backups have been disabled', 'info');
       } else {
         await axios.post(`${BACKEND_URL}/pods/${backupDeployment}/auto-backup`, {
           hour: backupHour
@@ -548,11 +574,11 @@ function Dashboard() {
           headers: { Authorization: `Bearer ${token}` }
         });
         setAutoBackupEnabled(true);
-        alert(`Auto-backup enabled! Daily backups at ${backupHour}:00 UTC`);
+        showNotification('Auto-Backup Enabled', `Daily backups scheduled at ${backupHour}:00 UTC`, 'success');
       }
     } catch (error) {
       console.error("Error toggling auto-backup:", error);
-      alert(`Failed to toggle auto-backup: ${error.response?.data?.detail || error.message}`);
+      showNotification('Auto-Backup Error', error.response?.data?.detail || error.message, 'error');
     }
   };
 
@@ -1474,6 +1500,36 @@ function Dashboard() {
           <Button onClick={() => setBackupOpen(false)} color="inherit">Close</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Professional Snackbar Notification */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={5000}
+        onClose={closeNotification}
+        TransitionComponent={Fade}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Alert 
+          onClose={closeNotification} 
+          severity={snackbar.severity}
+          variant="filled"
+          sx={{ 
+            minWidth: 320,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+            borderRadius: 2,
+            '& .MuiAlert-icon': {
+              fontSize: 24
+            }
+          }}
+        >
+          <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 0.5 }}>
+            {snackbar.title}
+          </Typography>
+          <Typography variant="body2" sx={{ opacity: 0.9 }}>
+            {snackbar.message}
+          </Typography>
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }
