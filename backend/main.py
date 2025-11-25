@@ -173,6 +173,27 @@ def get_namespace_name(company_name: str) -> str:
     clean_name = re.sub(r'[^a-z0-9\-]', '', clean_name)
     return f"org-{clean_name}"
 
+def find_deployment_from_pod_name(pod_name: str, namespace: str):
+    """Extract and find deployment from pod name (pods have random suffixes like nginx-1234-abc123-xyz)"""
+    parts = pod_name.split('-')
+    if len(parts) >= 3:
+        # Try progressively shorter names until we find the deployment
+        for i in range(len(parts) - 1, 0, -1):
+            try_name = '-'.join(parts[:i])
+            try:
+                deployment = apps_v1.read_namespaced_deployment(name=try_name, namespace=namespace)
+                return deployment
+            except:
+                continue
+        raise HTTPException(status_code=404, detail="Deployment not found")
+    else:
+        try:
+            return apps_v1.read_namespaced_deployment(name=pod_name, namespace=namespace)
+        except client.exceptions.ApiException as e:
+            if e.status == 404:
+                raise HTTPException(status_code=404, detail="Deployment not found")
+            raise
+
 def ensure_regcred_in_namespace(ns_name: str):
     """Ensure regcred secret exists in the given namespace by copying from admin-platform"""
     try:
@@ -1164,8 +1185,8 @@ def get_storage_quota(current_user: User = Depends(get_current_user)):
     }
 
 
-@app.post("/pods/{deployment_name}/storage")
-def add_storage_to_deployment(deployment_name: str, storage_config: StorageConfig, current_user: User = Depends(get_current_user)):
+@app.post("/pods/{pod_name}/storage")
+def add_storage_to_deployment(pod_name: str, storage_config: StorageConfig, current_user: User = Depends(get_current_user)):
     """Add persistent storage to a deployment (creates PVC and mounts it)"""
     ns_name = get_namespace_name(current_user.company_name)
     
@@ -1179,8 +1200,9 @@ def add_storage_to_deployment(deployment_name: str, storage_config: StorageConfi
         raise HTTPException(status_code=400, detail=f"Storage quota exceeded. Available: {COMPANY_STORAGE_QUOTA - current_usage:.1f}Gi")
     
     try:
-        # Find the deployment
-        deployment = apps_v1.read_namespaced_deployment(name=deployment_name, namespace=ns_name)
+        # Find the deployment from pod name
+        deployment = find_deployment_from_pod_name(pod_name, ns_name)
+        deployment_name = deployment.metadata.name
         
         pvc_name = f"{deployment_name}-pvc"
         
@@ -1241,12 +1263,15 @@ def add_storage_to_deployment(deployment_name: str, storage_config: StorageConfi
         raise HTTPException(status_code=500, detail=f"Error adding storage: {e.reason}")
 
 
-@app.get("/pods/{deployment_name}/storage")
-def get_deployment_storage(deployment_name: str, current_user: User = Depends(get_current_user)):
+@app.get("/pods/{pod_name}/storage")
+def get_deployment_storage(pod_name: str, current_user: User = Depends(get_current_user)):
     """Get storage info for a deployment"""
     ns_name = get_namespace_name(current_user.company_name)
     
     try:
+        # Find the deployment from pod name
+        deployment = find_deployment_from_pod_name(pod_name, ns_name)
+        deployment_name = deployment.metadata.name
         pvc_name = f"{deployment_name}-pvc"
         pvc = v1.read_namespaced_persistent_volume_claim(name=pvc_name, namespace=ns_name)
         
@@ -1265,8 +1290,8 @@ def get_deployment_storage(deployment_name: str, current_user: User = Depends(ge
 
 # ==================== AUTO-SCALING API ====================
 
-@app.post("/pods/{deployment_name}/scaling")
-def configure_autoscaling(deployment_name: str, scaling_config: ScalingConfig, current_user: User = Depends(get_current_user)):
+@app.post("/pods/{pod_name}/scaling")
+def configure_autoscaling(pod_name: str, scaling_config: ScalingConfig, current_user: User = Depends(get_current_user)):
     """Configure Horizontal Pod Autoscaler for a deployment"""
     ns_name = get_namespace_name(current_user.company_name)
     
@@ -1278,8 +1303,9 @@ def configure_autoscaling(deployment_name: str, scaling_config: ScalingConfig, c
         raise HTTPException(status_code=400, detail="Maximum replicas cannot exceed 10")
     
     try:
-        # Verify deployment exists
-        deployment = apps_v1.read_namespaced_deployment(name=deployment_name, namespace=ns_name)
+        # Find deployment from pod name
+        deployment = find_deployment_from_pod_name(pod_name, ns_name)
+        deployment_name = deployment.metadata.name
         
         # Create or update HPA
         hpa_name = f"{deployment_name}-hpa"
@@ -1323,12 +1349,15 @@ def configure_autoscaling(deployment_name: str, scaling_config: ScalingConfig, c
         raise HTTPException(status_code=500, detail=f"Error configuring scaling: {e.reason}")
 
 
-@app.get("/pods/{deployment_name}/scaling")
-def get_autoscaling_config(deployment_name: str, current_user: User = Depends(get_current_user)):
+@app.get("/pods/{pod_name}/scaling")
+def get_autoscaling_config(pod_name: str, current_user: User = Depends(get_current_user)):
     """Get current auto-scaling configuration for a deployment"""
     ns_name = get_namespace_name(current_user.company_name)
     
     try:
+        # Find deployment from pod name
+        deployment = find_deployment_from_pod_name(pod_name, ns_name)
+        deployment_name = deployment.metadata.name
         hpa_name = f"{deployment_name}-hpa"
         hpa = autoscaling_v1.read_namespaced_horizontal_pod_autoscaler(name=hpa_name, namespace=ns_name)
         
@@ -1346,12 +1375,15 @@ def get_autoscaling_config(deployment_name: str, current_user: User = Depends(ge
         raise HTTPException(status_code=500, detail=f"Error getting scaling config: {e.reason}")
 
 
-@app.delete("/pods/{deployment_name}/scaling")
-def disable_autoscaling(deployment_name: str, current_user: User = Depends(get_current_user)):
+@app.delete("/pods/{pod_name}/scaling")
+def disable_autoscaling(pod_name: str, current_user: User = Depends(get_current_user)):
     """Disable auto-scaling for a deployment"""
     ns_name = get_namespace_name(current_user.company_name)
     
     try:
+        # Find deployment from pod name
+        deployment = find_deployment_from_pod_name(pod_name, ns_name)
+        deployment_name = deployment.metadata.name
         hpa_name = f"{deployment_name}-hpa"
         autoscaling_v1.delete_namespaced_horizontal_pod_autoscaler(name=hpa_name, namespace=ns_name)
         return {"message": f"Auto-scaling disabled for {deployment_name}"}
@@ -1363,14 +1395,15 @@ def disable_autoscaling(deployment_name: str, current_user: User = Depends(get_c
 
 # ==================== BACKUP & RESTORE API ====================
 
-@app.post("/pods/{deployment_name}/backup")
-def create_backup(deployment_name: str, current_user: User = Depends(get_current_user)):
+@app.post("/pods/{pod_name}/backup")
+def create_backup(pod_name: str, current_user: User = Depends(get_current_user)):
     """Create a backup of a database deployment"""
     ns_name = get_namespace_name(current_user.company_name)
     
     try:
-        # Get the deployment to determine database type
-        deployment = apps_v1.read_namespaced_deployment(name=deployment_name, namespace=ns_name)
+        # Find deployment from pod name
+        deployment = find_deployment_from_pod_name(pod_name, ns_name)
+        deployment_name = deployment.metadata.name
         container = deployment.spec.template.spec.containers[0]
         image = container.image.lower()
         
@@ -1476,12 +1509,16 @@ def create_backup(deployment_name: str, current_user: User = Depends(get_current
         raise HTTPException(status_code=500, detail=f"Error creating backup: {e.reason}")
 
 
-@app.get("/pods/{deployment_name}/backups")
-def list_backups(deployment_name: str, current_user: User = Depends(get_current_user)):
+@app.get("/pods/{pod_name}/backups")
+def list_backups(pod_name: str, current_user: User = Depends(get_current_user)):
     """List all backups for a deployment"""
     ns_name = get_namespace_name(current_user.company_name)
     
     try:
+        # Find deployment from pod name
+        deployment = find_deployment_from_pod_name(pod_name, ns_name)
+        deployment_name = deployment.metadata.name
+        
         # List backup jobs
         jobs = batch_v1.list_namespaced_job(namespace=ns_name, label_selector=f"backup-for={deployment_name}")
         
@@ -1508,14 +1545,15 @@ def list_backups(deployment_name: str, current_user: User = Depends(get_current_
         raise HTTPException(status_code=500, detail=f"Error listing backups: {e.reason}")
 
 
-@app.post("/pods/{deployment_name}/restore/{backup_name}")
-def restore_backup(deployment_name: str, backup_name: str, current_user: User = Depends(get_current_user)):
+@app.post("/pods/{pod_name}/restore/{backup_name}")
+def restore_backup(pod_name: str, backup_name: str, current_user: User = Depends(get_current_user)):
     """Restore a database from a backup"""
     ns_name = get_namespace_name(current_user.company_name)
     
     try:
-        # Get the deployment
-        deployment = apps_v1.read_namespaced_deployment(name=deployment_name, namespace=ns_name)
+        # Find deployment from pod name
+        deployment = find_deployment_from_pod_name(pod_name, ns_name)
+        deployment_name = deployment.metadata.name
         container = deployment.spec.template.spec.containers[0]
         image = container.image.lower()
         
@@ -1588,14 +1626,15 @@ def restore_backup(deployment_name: str, backup_name: str, current_user: User = 
         raise HTTPException(status_code=500, detail=f"Error restoring backup: {e.reason}")
 
 
-@app.post("/pods/{deployment_name}/auto-backup")
-def configure_auto_backup(deployment_name: str, current_user: User = Depends(get_current_user)):
+@app.post("/pods/{pod_name}/auto-backup")
+def configure_auto_backup(pod_name: str, current_user: User = Depends(get_current_user)):
     """Configure automatic daily backups using a CronJob"""
     ns_name = get_namespace_name(current_user.company_name)
     
     try:
-        # Get deployment info
-        deployment = apps_v1.read_namespaced_deployment(name=deployment_name, namespace=ns_name)
+        # Find deployment from pod name
+        deployment = find_deployment_from_pod_name(pod_name, ns_name)
+        deployment_name = deployment.metadata.name
         container = deployment.spec.template.spec.containers[0]
         image = container.image.lower()
         
@@ -1695,12 +1734,15 @@ def configure_auto_backup(deployment_name: str, current_user: User = Depends(get
         raise HTTPException(status_code=500, detail=f"Error configuring auto-backup: {e.reason}")
 
 
-@app.delete("/pods/{deployment_name}/auto-backup")
-def disable_auto_backup(deployment_name: str, current_user: User = Depends(get_current_user)):
+@app.delete("/pods/{pod_name}/auto-backup")
+def disable_auto_backup(pod_name: str, current_user: User = Depends(get_current_user)):
     """Disable automatic backups"""
     ns_name = get_namespace_name(current_user.company_name)
     
     try:
+        # Find deployment from pod name
+        deployment = find_deployment_from_pod_name(pod_name, ns_name)
+        deployment_name = deployment.metadata.name
         cronjob_name = f"autobackup-{deployment_name}"
         batch_v1.delete_namespaced_cron_job(name=cronjob_name, namespace=ns_name)
         return {"message": f"Auto-backup disabled for {deployment_name}"}
@@ -1710,12 +1752,15 @@ def disable_auto_backup(deployment_name: str, current_user: User = Depends(get_c
         raise HTTPException(status_code=500, detail=f"Error disabling auto-backup: {e.reason}")
 
 
-@app.get("/pods/{deployment_name}/auto-backup")
-def get_auto_backup_status(deployment_name: str, current_user: User = Depends(get_current_user)):
+@app.get("/pods/{pod_name}/auto-backup")
+def get_auto_backup_status(pod_name: str, current_user: User = Depends(get_current_user)):
     """Check if auto-backup is enabled for a deployment"""
     ns_name = get_namespace_name(current_user.company_name)
     
     try:
+        # Find deployment from pod name
+        deployment = find_deployment_from_pod_name(pod_name, ns_name)
+        deployment_name = deployment.metadata.name
         cronjob_name = f"autobackup-{deployment_name}"
         cronjob = batch_v1.read_namespaced_cron_job(name=cronjob_name, namespace=ns_name)
         
