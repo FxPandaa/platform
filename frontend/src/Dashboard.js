@@ -63,7 +63,9 @@ import {
   Article as ArticleIcon,
   OpenInNew as OpenInNewIcon,
   CloudDone as CloudDoneIcon,
-  Business as BusinessIcon
+  Business as BusinessIcon,
+  RestartAlt as RestartAltIcon,
+  DeleteForever as DeleteForeverIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 
@@ -435,6 +437,37 @@ function Dashboard() {
     } catch (error) {
       console.error("Error adding storage:", error);
       showNotification('Storage Error', error.response?.data?.detail || error.message, 'error');
+    }
+  };
+
+  const handleDeleteStorage = async () => {
+    if (!window.confirm("Are you sure you want to remove storage? All data will be permanently deleted!")) return;
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`${BACKEND_URL}/pods/${storageDeployment}/storage`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      showNotification('Storage Removed', 'Persistent storage has been removed. Pod will restart.', 'success');
+      setStorageOpen(false);
+      fetchPods();
+    } catch (error) {
+      console.error("Error removing storage:", error);
+      showNotification('Storage Error', error.response?.data?.detail || error.message, 'error');
+    }
+  };
+
+  const handleRestartPod = async (podName) => {
+    if (!window.confirm(`Are you sure you want to restart ${podName}?`)) return;
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(`${BACKEND_URL}/pods/${podName}/restart`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      showNotification('Pod Restarting', `${podName} is restarting...`, 'info');
+      fetchPods();
+    } catch (error) {
+      console.error("Error restarting pod:", error);
+      showNotification('Restart Failed', error.response?.data?.detail || error.message, 'error');
     }
   };
 
@@ -869,7 +902,16 @@ function Dashboard() {
                       €{pod.cost.toFixed(2)} / mo
                     </Typography>
                 </CardContent>
-                <CardActions sx={{ justifyContent: 'flex-end', px: 2, pb: 2 }}>
+                <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
+                  <Tooltip title="Restart Pod">
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleRestartPod(pod.name)}
+                      sx={{ color: 'warning.main' }}
+                    >
+                      <RestartAltIcon />
+                    </IconButton>
+                  </Tooltip>
                   <Button 
                     size="small" 
                     color="error" 
@@ -1218,69 +1260,99 @@ function Dashboard() {
                     Current Storage
                   </Typography>
                   {currentStorage.volumes.map((vol, idx) => (
-                    <Box key={idx} sx={{ p: 1.5, bgcolor: 'rgba(0,255,0,0.1)', borderRadius: 1, mb: 1 }}>
-                      <Typography variant="body2" color="success.main">
-                        ✓ {vol.size || 'N/A'} mounted at {vol.mount_path}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        PVC: {vol.pvc_name}
-                      </Typography>
+                    <Box 
+                      key={idx} 
+                      sx={{ 
+                        p: 2, 
+                        bgcolor: 'rgba(34, 197, 94, 0.1)', 
+                        borderRadius: 2, 
+                        mb: 1,
+                        border: '1px solid rgba(34, 197, 94, 0.3)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <Box>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <CloudDoneIcon sx={{ color: 'success.main', fontSize: 20 }} />
+                          <Typography variant="body1" color="success.main" fontWeight="medium">
+                            {vol.size || 'N/A'} mounted at {vol.mount_path}
+                          </Typography>
+                        </Box>
+                        <Typography variant="caption" color="text.secondary" sx={{ ml: 3.5 }}>
+                          PVC: {vol.pvc_name} • Status: {vol.status || 'Bound'}
+                        </Typography>
+                      </Box>
+                      <Tooltip title="Remove Storage (Data will be lost!)">
+                        <IconButton 
+                          size="small" 
+                          onClick={handleDeleteStorage}
+                          sx={{ color: 'error.main' }}
+                        >
+                          <DeleteForeverIcon />
+                        </IconButton>
+                      </Tooltip>
                     </Box>
                   ))}
                 </Box>
               ) : (
-                <Alert severity="info" sx={{ mb: 3 }}>
-                  No persistent storage attached. Add storage for databases or data that needs to survive restarts.
-                </Alert>
-              )}
+                <>
+                  <Alert severity="info" sx={{ mb: 3 }}>
+                    No persistent storage attached. Add storage for databases or data that needs to survive restarts.
+                  </Alert>
 
-              {/* Add Storage Form */}
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                Add Persistent Storage
-              </Typography>
-              <Box sx={{ mb: 2, px: 1 }}>
-                <Typography gutterBottom>Size: {storageSize}Gi</Typography>
-                <Slider
-                  value={storageSize}
-                  onChange={(e, v) => setStorageSize(v)}
-                  min={1}
-                  max={storageQuota ? Math.min(50, storageQuota.available_gi) : 50}
-                  step={1}
-                  valueLabelDisplay="auto"
-                  valueLabelFormat={(v) => `${v}Gi`}
-                  marks={[
-                    { value: 1, label: '1Gi' },
-                    { value: 10, label: '10Gi' },
-                    { value: 25, label: '25Gi' },
-                    { value: 50, label: '50Gi' }
-                  ].filter(m => !storageQuota || m.value <= storageQuota.available_gi)}
-                />
-              </Box>
-              <TextField
-                fullWidth
-                size="small"
-                label="Mount Path"
-                value={storageMountPath}
-                onChange={(e) => setStorageMountPath(e.target.value)}
-                helperText="Directory inside container where storage will be mounted"
-                sx={{ mb: 2 }}
-              />
-              <Alert severity="warning">
-                Adding storage will restart the pod. Data in the mount path will be preserved across restarts.
-              </Alert>
+                  {/* Add Storage Form - Only show when no storage exists */}
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    Add Persistent Storage
+                  </Typography>
+                  <Box sx={{ mb: 2, px: 1 }}>
+                    <Typography gutterBottom>Size: {storageSize}Gi</Typography>
+                    <Slider
+                      value={storageSize}
+                      onChange={(e, v) => setStorageSize(v)}
+                      min={1}
+                      max={storageQuota ? Math.min(50, storageQuota.available_gi) : 50}
+                      step={1}
+                      valueLabelDisplay="auto"
+                      valueLabelFormat={(v) => `${v}Gi`}
+                      marks={[
+                        { value: 1, label: '1Gi' },
+                        { value: 10, label: '10Gi' },
+                        { value: 25, label: '25Gi' },
+                        { value: 50, label: '50Gi' }
+                      ].filter(m => !storageQuota || m.value <= storageQuota.available_gi)}
+                    />
+                  </Box>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Mount Path"
+                    value={storageMountPath}
+                    onChange={(e) => setStorageMountPath(e.target.value)}
+                    helperText="Directory inside container where storage will be mounted"
+                    sx={{ mb: 2 }}
+                  />
+                  <Alert severity="warning">
+                    Adding storage will restart the pod. Data in the mount path will be preserved across restarts.
+                  </Alert>
+                </>
+              )}
             </Box>
           )}
         </DialogContent>
         <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-          <Button onClick={() => setStorageOpen(false)} color="inherit">Cancel</Button>
-          <Button 
-            onClick={handleAddStorage} 
-            variant="contained" 
-            color="primary"
-            disabled={!storageQuota || storageQuota.available_gi < storageSize}
-          >
-            Add Storage
-          </Button>
+          <Button onClick={() => setStorageOpen(false)} color="inherit">Close</Button>
+          {(!currentStorage || !currentStorage.volumes || currentStorage.volumes.length === 0) && (
+            <Button 
+              onClick={handleAddStorage} 
+              variant="contained" 
+              color="primary"
+              disabled={!storageQuota || storageQuota.available_gi < storageSize}
+            >
+              Add Storage
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 

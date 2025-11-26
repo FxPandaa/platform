@@ -1331,20 +1331,112 @@ def get_deployment_storage(pod_name: str, current_user: User = Depends(get_curre
         # Find the deployment from pod name
         deployment = find_deployment_from_pod_name(pod_name, ns_name)
         deployment_name = deployment.metadata.name
+        
+        # Get mount path from deployment spec
+        mount_path = "/data"  # default
+        containers = deployment.spec.template.spec.containers
+        if containers and containers[0].volume_mounts:
+            for vm in containers[0].volume_mounts:
+                if vm.name == f"{deployment_name}-storage":
+                    mount_path = vm.mount_path
+                    break
+        
         pvc_name = f"{deployment_name}-pvc"
         pvc = v1.read_namespaced_persistent_volume_claim(name=pvc_name, namespace=ns_name)
         
         return {
             "has_storage": True,
-            "pvc_name": pvc_name,
-            "size": pvc.spec.resources.requests.get("storage", "Unknown"),
-            "status": pvc.status.phase,
-            "access_modes": pvc.spec.access_modes
+            "volumes": [{
+                "pvc_name": pvc_name,
+                "size": pvc.spec.resources.requests.get("storage", "Unknown"),
+                "mount_path": mount_path,
+                "status": pvc.status.phase,
+                "access_modes": pvc.spec.access_modes
+            }]
         }
     except client.exceptions.ApiException as e:
         if e.status == 404:
-            return {"has_storage": False}
+            return {"has_storage": False, "volumes": []}
         raise HTTPException(status_code=500, detail=f"Error checking storage: {e.reason}")
+
+
+@app.delete("/pods/{pod_name}/storage")
+def delete_deployment_storage(pod_name: str, current_user: User = Depends(get_current_user)):
+    """Remove storage from a deployment"""
+    ns_name = get_namespace_name(current_user.company_name)
+    
+    try:
+        # Find the deployment from pod name
+        deployment = find_deployment_from_pod_name(pod_name, ns_name)
+        deployment_name = deployment.metadata.name
+        pvc_name = f"{deployment_name}-pvc"
+        
+        # Remove volume mount from container
+        containers = deployment.spec.template.spec.containers
+        if containers[0].volume_mounts:
+            containers[0].volume_mounts = [
+                vm for vm in containers[0].volume_mounts 
+                if vm.name != f"{deployment_name}-storage"
+            ]
+            if not containers[0].volume_mounts:
+                containers[0].volume_mounts = None
+        
+        # Remove volume from pod spec
+        if deployment.spec.template.spec.volumes:
+            deployment.spec.template.spec.volumes = [
+                v for v in deployment.spec.template.spec.volumes 
+                if v.name != f"{deployment_name}-storage"
+            ]
+            if not deployment.spec.template.spec.volumes:
+                deployment.spec.template.spec.volumes = None
+        
+        # Update deployment
+        apps_v1.replace_namespaced_deployment(
+            name=deployment_name,
+            namespace=ns_name,
+            body=deployment
+        )
+        
+        # Delete the PVC
+        v1.delete_namespaced_persistent_volume_claim(name=pvc_name, namespace=ns_name)
+        
+        return {"message": f"Storage removed from {deployment_name}"}
+        
+    except client.exceptions.ApiException as e:
+        if e.status == 404:
+            raise HTTPException(status_code=404, detail="Deployment or storage not found")
+        raise HTTPException(status_code=500, detail=f"Error removing storage: {e.reason}")
+
+
+@app.post("/pods/{pod_name}/restart")
+def restart_pod(pod_name: str, current_user: User = Depends(get_current_user)):
+    """Restart a pod by updating the deployment's restart annotation"""
+    ns_name = get_namespace_name(current_user.company_name)
+    
+    try:
+        # Find the deployment from pod name
+        deployment = find_deployment_from_pod_name(pod_name, ns_name)
+        deployment_name = deployment.metadata.name
+        
+        # Add/update restart annotation to trigger rolling restart
+        if not deployment.spec.template.metadata.annotations:
+            deployment.spec.template.metadata.annotations = {}
+        
+        deployment.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
+        
+        # Update deployment
+        apps_v1.replace_namespaced_deployment(
+            name=deployment_name,
+            namespace=ns_name,
+            body=deployment
+        )
+        
+        return {"message": f"Pod {deployment_name} is restarting"}
+        
+    except client.exceptions.ApiException as e:
+        if e.status == 404:
+            raise HTTPException(status_code=404, detail="Deployment not found")
+        raise HTTPException(status_code=500, detail=f"Error restarting pod: {e.reason}")
 
 
 # ==================== AUTO-SCALING API ====================
