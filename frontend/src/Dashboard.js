@@ -64,8 +64,8 @@ import {
   OpenInNew as OpenInNewIcon,
   CloudDone as CloudDoneIcon,
   Business as BusinessIcon,
-  RestartAlt as RestartAltIcon,
-  DeleteForever as DeleteForeverIcon
+  DeleteForever as DeleteForeverIcon,
+  TrendingUp as TrendingUpIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 
@@ -456,21 +456,6 @@ function Dashboard() {
     }
   };
 
-  const handleRestartPod = async (podName) => {
-    if (!window.confirm(`Are you sure you want to restart ${podName}?`)) return;
-    try {
-      const token = localStorage.getItem('token');
-      await axios.post(`${BACKEND_URL}/pods/${podName}/restart`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      showNotification('Pod Restarting', `${podName} is restarting...`, 'info');
-      fetchPods();
-    } catch (error) {
-      console.error("Error restarting pod:", error);
-      showNotification('Restart Failed', error.response?.data?.detail || error.message, 'error');
-    }
-  };
-
   // ==================== SCALING HANDLERS ====================
   const handleViewScaling = async (podName) => {
     setScalingDeployment(podName);
@@ -658,8 +643,18 @@ function Dashboard() {
           <Chip 
             label={`Total Cost: €${calculateTotalCost()} / mo`} 
             variant="outlined" 
-            sx={{ mr: 3, borderColor: 'rgba(255,255,255,0.2)', color: 'text.primary' }} 
+            sx={{ mr: 2, borderColor: 'rgba(255,255,255,0.2)', color: 'text.primary' }} 
           />
+          <Tooltip title="Monitoring Dashboard">
+            <Button 
+              color="inherit" 
+              startIcon={<TrendingUpIcon />}
+              onClick={() => navigate('/monitoring')}
+              sx={{ mr: 1 }}
+            >
+              Monitoring
+            </Button>
+          </Tooltip>
           <IconButton color="inherit" onClick={fetchPods} sx={{ mr: 1 }}>
             <RefreshIcon />
           </IconButton>
@@ -902,16 +897,7 @@ function Dashboard() {
                       €{pod.cost.toFixed(2)} / mo
                     </Typography>
                 </CardContent>
-                <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
-                  <Tooltip title="Restart Pod">
-                    <IconButton 
-                      size="small" 
-                      onClick={() => handleRestartPod(pod.name)}
-                      sx={{ color: 'warning.main' }}
-                    >
-                      <RestartAltIcon />
-                    </IconButton>
-                  </Tooltip>
+                <CardActions sx={{ justifyContent: 'flex-end', px: 2, pb: 2 }}>
                   <Button 
                     size="small" 
                     color="error" 

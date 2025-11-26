@@ -11,7 +11,8 @@
     "@mui/material": "^5.13.5",
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
-    "@mui/icons-material": "^5.11.16"
+    "@mui/icons-material": "^5.11.16",
+    "recharts": "^2.10.3"
   },
   "scripts": {
     "start": "react-scripts start",

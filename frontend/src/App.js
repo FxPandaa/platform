@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import Login from './Login';
 import Dashboard from './Dashboard';
+import Monitoring from './Monitoring';
 
 const darkTheme = createTheme({
   palette: {
@@ -231,6 +232,14 @@ function App() {
             element={
               <PrivateRoute>
                 <Dashboard />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/monitoring" 
+            element={
+              <PrivateRoute>
+                <Monitoring />
               </PrivateRoute>
             } 
           />

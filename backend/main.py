@@ -1408,37 +1408,6 @@ def delete_deployment_storage(pod_name: str, current_user: User = Depends(get_cu
         raise HTTPException(status_code=500, detail=f"Error removing storage: {e.reason}")
 
 
-@app.post("/pods/{pod_name}/restart")
-def restart_pod(pod_name: str, current_user: User = Depends(get_current_user)):
-    """Restart a pod by updating the deployment's restart annotation"""
-    ns_name = get_namespace_name(current_user.company_name)
-    
-    try:
-        # Find the deployment from pod name
-        deployment = find_deployment_from_pod_name(pod_name, ns_name)
-        deployment_name = deployment.metadata.name
-        
-        # Add/update restart annotation to trigger rolling restart
-        if not deployment.spec.template.metadata.annotations:
-            deployment.spec.template.metadata.annotations = {}
-        
-        deployment.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = datetime.utcnow().isoformat()
-        
-        # Update deployment
-        apps_v1.replace_namespaced_deployment(
-            name=deployment_name,
-            namespace=ns_name,
-            body=deployment
-        )
-        
-        return {"message": f"Pod {deployment_name} is restarting"}
-        
-    except client.exceptions.ApiException as e:
-        if e.status == 404:
-            raise HTTPException(status_code=404, detail="Deployment not found")
-        raise HTTPException(status_code=500, detail=f"Error restarting pod: {e.reason}")
-
-
 # ==================== AUTO-SCALING API ====================
 
 @app.post("/pods/{pod_name}/scaling")
@@ -1924,3 +1893,228 @@ def get_auto_backup_status(pod_name: str, current_user: User = Depends(get_curre
         if e.status == 404:
             return {"enabled": False}
         raise HTTPException(status_code=500, detail=f"Error checking auto-backup status: {e.reason}")
+
+
+# ==================== MONITORING API ====================
+
+@app.get("/monitoring")
+def get_monitoring_data(current_user: User = Depends(get_current_user)):
+    """Get comprehensive monitoring data for all pods"""
+    ns_name = get_namespace_name(current_user.company_name)
+    
+    prices = {"nginx": 5.00, "postgres": 15.00, "redis": 10.00, "custom": 20.00, "wordpress": 20.00, "mysql": 10.00, "uptime": 10.00}
+    
+    try:
+        # Get all pods
+        k8s_pods = v1.list_namespaced_pod(namespace=ns_name)
+        
+        # Get all deployments for replica info
+        deployments = apps_v1.list_namespaced_deployment(namespace=ns_name)
+        
+        # Get all HPAs
+        hpas = []
+        try:
+            hpa_list = autoscaling_v1.list_namespaced_horizontal_pod_autoscaler(namespace=ns_name)
+            hpas = hpa_list.items
+        except:
+            pass
+        
+        # Get all PVCs for storage info
+        pvcs = []
+        try:
+            pvc_list = v1.list_namespaced_persistent_volume_claim(namespace=ns_name)
+            pvcs = pvc_list.items
+        except:
+            pass
+        
+        # Get metrics for all pods (if metrics-server available)
+        pod_metrics = {}
+        try:
+            metrics = custom_api.list_namespaced_custom_object(
+                group="metrics.k8s.io",
+                version="v1beta1",
+                namespace=ns_name,
+                plural="pods"
+            )
+            for item in metrics.get("items", []):
+                pod_name = item["metadata"]["name"]
+                containers = item.get("containers", [])
+                if containers:
+                    cpu_str = containers[0].get("usage", {}).get("cpu", "0")
+                    memory_str = containers[0].get("usage", {}).get("memory", "0")
+                    
+                    # Parse CPU (convert nanoCPU to millicores)
+                    cpu_value = 0
+                    if cpu_str.endswith('n'):
+                        cpu_value = int(cpu_str[:-1]) / 1000000  # nano to milli
+                    elif cpu_str.endswith('m'):
+                        cpu_value = int(cpu_str[:-1])
+                    else:
+                        cpu_value = int(cpu_str) * 1000  # cores to milli
+                    
+                    # Parse Memory (convert to Mi)
+                    memory_value = 0
+                    if memory_str.endswith('Ki'):
+                        memory_value = int(memory_str[:-2]) / 1024
+                    elif memory_str.endswith('Mi'):
+                        memory_value = int(memory_str[:-2])
+                    elif memory_str.endswith('Gi'):
+                        memory_value = int(memory_str[:-2]) * 1024
+                    else:
+                        memory_value = int(memory_str) / (1024 * 1024)
+                    
+                    pod_metrics[pod_name] = {
+                        "cpu_millicores": round(cpu_value, 2),
+                        "memory_mi": round(memory_value, 2)
+                    }
+        except Exception as e:
+            print(f"Could not fetch pod metrics: {e}")
+        
+        # Build monitoring data
+        pods_data = []
+        total_cpu = 0
+        total_memory = 0
+        status_counts = {"Running": 0, "Pending": 0, "Failed": 0, "Succeeded": 0, "Unknown": 0}
+        category_counts = {"app": 0, "db": 0, "cache": 0, "monitoring": 0, "other": 0}
+        
+        for p in k8s_pods.items:
+            labels = p.metadata.labels or {}
+            app_type = labels.get("app", "unknown")
+            base_type = app_type.split('-')[0] if '-' in app_type else app_type
+            
+            # Status
+            status = p.status.phase
+            if p.status.container_statuses:
+                for cs in p.status.container_statuses:
+                    if cs.state.waiting:
+                        status = cs.state.waiting.reason
+                        break
+            
+            # Count statuses
+            if status in status_counts:
+                status_counts[status] += 1
+            elif status in ["CrashLoopBackOff", "Error", "ImagePullBackOff"]:
+                status_counts["Failed"] += 1
+            else:
+                status_counts["Unknown"] += 1
+            
+            # Category
+            if base_type in ["wordpress", "nginx"]:
+                category_counts["app"] += 1
+            elif base_type in ["postgres", "mysql"]:
+                category_counts["db"] += 1
+            elif base_type in ["redis"]:
+                category_counts["cache"] += 1
+            elif base_type in ["uptime"]:
+                category_counts["monitoring"] += 1
+            else:
+                category_counts["other"] += 1
+            
+            # Metrics
+            metrics = pod_metrics.get(p.metadata.name, {"cpu_millicores": 0, "memory_mi": 0})
+            total_cpu += metrics["cpu_millicores"]
+            total_memory += metrics["memory_mi"]
+            
+            # Age
+            age_hours = 0
+            if p.status.start_time:
+                delta = datetime.now(p.status.start_time.tzinfo) - p.status.start_time
+                age_hours = round(delta.total_seconds() / 3600, 1)
+            
+            # Restarts
+            restarts = 0
+            if p.status.container_statuses:
+                restarts = sum(cs.restart_count for cs in p.status.container_statuses)
+            
+            pods_data.append({
+                "name": p.metadata.name,
+                "type": app_type,
+                "status": status,
+                "cpu_millicores": metrics["cpu_millicores"],
+                "memory_mi": metrics["memory_mi"],
+                "age_hours": age_hours,
+                "restarts": restarts,
+                "cost": prices.get(base_type, 20.00)
+            })
+        
+        # Deployment/HPA info
+        deployments_data = []
+        for d in deployments.items:
+            name = d.metadata.name
+            desired = d.spec.replicas or 1
+            ready = d.status.ready_replicas or 0
+            
+            # Check for HPA
+            hpa_info = None
+            for hpa in hpas:
+                if hpa.spec.scale_target_ref.name == name:
+                    hpa_info = {
+                        "min_replicas": hpa.spec.min_replicas,
+                        "max_replicas": hpa.spec.max_replicas,
+                        "current_replicas": hpa.status.current_replicas or 1,
+                        "cpu_target": hpa.spec.target_cpu_utilization_percentage
+                    }
+                    break
+            
+            deployments_data.append({
+                "name": name,
+                "desired_replicas": desired,
+                "ready_replicas": ready,
+                "hpa": hpa_info
+            })
+        
+        # Storage info
+        storage_data = []
+        total_storage_used = 0
+        for pvc in pvcs:
+            size_str = pvc.spec.resources.requests.get("storage", "0Gi")
+            size_gi = float(size_str.replace("Gi", "")) if "Gi" in size_str else 0
+            total_storage_used += size_gi
+            storage_data.append({
+                "name": pvc.metadata.name,
+                "size": size_str,
+                "status": pvc.status.phase
+            })
+        
+        # Calculate totals
+        total_pods = len(k8s_pods.items)
+        total_cost = sum(p["cost"] for p in pods_data)
+        
+        return {
+            "summary": {
+                "total_pods": total_pods,
+                "total_deployments": len(deployments.items),
+                "total_cpu_millicores": round(total_cpu, 2),
+                "total_memory_mi": round(total_memory, 2),
+                "total_storage_gi": round(total_storage_used, 2),
+                "storage_quota_gi": COMPANY_STORAGE_QUOTA,
+                "total_monthly_cost": round(total_cost, 2),
+                "status_counts": status_counts,
+                "category_counts": category_counts
+            },
+            "pods": pods_data,
+            "deployments": deployments_data,
+            "storage": storage_data,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except client.exceptions.ApiException as e:
+        if e.status == 404:
+            return {
+                "summary": {
+                    "total_pods": 0,
+                    "total_deployments": 0,
+                    "total_cpu_millicores": 0,
+                    "total_memory_mi": 0,
+                    "total_storage_gi": 0,
+                    "storage_quota_gi": COMPANY_STORAGE_QUOTA,
+                    "total_monthly_cost": 0,
+                    "status_counts": {"Running": 0, "Pending": 0, "Failed": 0, "Succeeded": 0, "Unknown": 0},
+                    "category_counts": {"app": 0, "db": 0, "cache": 0, "monitoring": 0, "other": 0}
+                },
+                "pods": [],
+                "deployments": [],
+                "storage": [],
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        raise HTTPException(status_code=500, detail=f"Error fetching monitoring data: {e.reason}")
