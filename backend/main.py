@@ -6,7 +6,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
-from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy import create_engine, Column, Integer, String, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 import os
@@ -64,8 +64,33 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     company_name = Column(String)
+    is_admin = Column(Boolean, default=False)
 
 Base.metadata.create_all(bind=engine)
+
+# --- CREATE DEFAULT ADMIN ---
+def create_default_admin():
+    db = SessionLocal()
+    try:
+        admin = db.query(User).filter(User.username == "admin").first()
+        if not admin:
+            hashed_pw = get_password_hash("admin123")
+            admin = User(username="admin", hashed_password=hashed_pw, company_name="Platform Admin", is_admin=True)
+            db.add(admin)
+            db.commit()
+            print("[STARTUP] Default admin user created (username: admin, password: admin123)")
+        else:
+            # Ensure existing admin has is_admin flag
+            if not admin.is_admin:
+                admin.is_admin = True
+                db.commit()
+                print("[STARTUP] Admin flag updated for existing admin user")
+    except Exception as e:
+        print(f"[STARTUP] Error creating admin: {e}")
+    finally:
+        db.close()
+
+create_default_admin()
 
 # --- SECURITY ---
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
@@ -288,12 +313,18 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=400, detail="Incorrect username or password")
     
-    # Ensure regcred exists in user's namespace (fix for existing namespaces)
-    ns_name = get_namespace_name(user.company_name)
-    ensure_regcred_in_namespace(ns_name)
+    # Ensure regcred exists in user's namespace (fix for existing namespaces) - skip for admins
+    if not user.is_admin:
+        ns_name = get_namespace_name(user.company_name)
+        ensure_regcred_in_namespace(ns_name)
     
     access_token = create_access_token(data={"sub": user.username})
-    return {"access_token": access_token, "token_type": "bearer", "company": user.company_name}
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer", 
+        "company": user.company_name,
+        "is_admin": user.is_admin
+    }
 
 @app.get("/pods", response_model=list[PodInfo])
 def get_pods(current_user: User = Depends(get_current_user)):
@@ -2118,3 +2149,170 @@ def get_monitoring_data(current_user: User = Depends(get_current_user)):
                 "timestamp": datetime.utcnow().isoformat()
             }
         raise HTTPException(status_code=500, detail=f"Error fetching monitoring data: {e.reason}")
+
+# =============================================
+# ADMIN PORTAL ENDPOINTS
+# =============================================
+
+def require_admin(current_user: User = Depends(get_current_user)):
+    """Dependency to require admin privileges"""
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required"
+        )
+    return current_user
+
+@app.get("/admin/stats")
+def get_admin_stats(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Get platform-wide statistics for admin dashboard"""
+    try:
+        # Get all non-admin users
+        users = db.query(User).filter(User.is_admin == False).all()
+        
+        # Get unique companies
+        companies = set(u.company_name for u in users)
+        
+        # Count all pods across all namespaces
+        total_pods = 0
+        total_deployments = 0
+        total_cost = 0.0
+        
+        prices = {"nginx": 5.00, "postgres": 15.00, "redis": 10.00, "custom": 20.00, "wordpress": 20.00, "mysql": 10.00, "uptime": 10.00}
+        
+        for company in companies:
+            ns_name = get_namespace_name(company)
+            try:
+                pods = v1.list_namespaced_pod(namespace=ns_name)
+                deployments = apps_v1.list_namespaced_deployment(namespace=ns_name)
+                total_pods += len(pods.items)
+                total_deployments += len(deployments.items)
+                
+                for pod in pods.items:
+                    pod_type = pod.metadata.labels.get("type", "custom") if pod.metadata.labels else "custom"
+                    total_cost += prices.get(pod_type, 20.00)
+            except:
+                pass
+        
+        return {
+            "total_companies": len(companies),
+            "total_users": len(users),
+            "total_pods": total_pods,
+            "total_deployments": total_deployments,
+            "estimated_monthly_revenue": round(total_cost, 2)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching admin stats: {str(e)}")
+
+@app.get("/admin/companies")
+def get_admin_companies(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Get all companies with their users and resource counts"""
+    try:
+        users = db.query(User).filter(User.is_admin == False).all()
+        
+        # Group users by company
+        companies_map = {}
+        for user in users:
+            if user.company_name not in companies_map:
+                companies_map[user.company_name] = {
+                    "name": user.company_name,
+                    "namespace": get_namespace_name(user.company_name),
+                    "users": [],
+                    "pod_count": 0,
+                    "deployment_count": 0,
+                    "monthly_cost": 0.0
+                }
+            companies_map[user.company_name]["users"].append({
+                "id": user.id,
+                "username": user.username
+            })
+        
+        prices = {"nginx": 5.00, "postgres": 15.00, "redis": 10.00, "custom": 20.00, "wordpress": 20.00, "mysql": 10.00, "uptime": 10.00}
+        
+        # Get resource counts for each company
+        for company_name, company_data in companies_map.items():
+            try:
+                ns_name = company_data["namespace"]
+                pods = v1.list_namespaced_pod(namespace=ns_name)
+                deployments = apps_v1.list_namespaced_deployment(namespace=ns_name)
+                
+                company_data["pod_count"] = len(pods.items)
+                company_data["deployment_count"] = len(deployments.items)
+                
+                for pod in pods.items:
+                    pod_type = pod.metadata.labels.get("type", "custom") if pod.metadata.labels else "custom"
+                    company_data["monthly_cost"] += prices.get(pod_type, 20.00)
+                
+                company_data["monthly_cost"] = round(company_data["monthly_cost"], 2)
+            except:
+                pass
+        
+        return list(companies_map.values())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching companies: {str(e)}")
+
+@app.delete("/admin/companies/{company_name}")
+def delete_admin_company(company_name: str, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Delete a company and all its resources"""
+    try:
+        # Delete all users of this company
+        users = db.query(User).filter(User.company_name == company_name).all()
+        if not users:
+            raise HTTPException(status_code=404, detail="Company not found")
+        
+        for user in users:
+            db.delete(user)
+        
+        # Delete namespace (this deletes all resources in it)
+        ns_name = get_namespace_name(company_name)
+        try:
+            v1.delete_namespace(name=ns_name)
+            print(f"[ADMIN] Deleted namespace: {ns_name}")
+        except client.exceptions.ApiException as e:
+            if e.status != 404:
+                print(f"[ADMIN] Error deleting namespace: {e}")
+        
+        db.commit()
+        return {"msg": f"Company '{company_name}' and all resources deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting company: {str(e)}")
+
+@app.get("/admin/users")
+def get_admin_users(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Get all non-admin users"""
+    try:
+        users = db.query(User).filter(User.is_admin == False).all()
+        return [
+            {
+                "id": u.id,
+                "username": u.username,
+                "company_name": u.company_name
+            }
+            for u in users
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching users: {str(e)}")
+
+@app.delete("/admin/users/{user_id}")
+def delete_admin_user(user_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Delete a specific user"""
+    try:
+        user = db.query(User).filter(User.id == user_id, User.is_admin == False).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found or cannot delete admin")
+        
+        username = user.username
+        company = user.company_name
+        
+        db.delete(user)
+        db.commit()
+        
+        return {"msg": f"User '{username}' from company '{company}' deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")

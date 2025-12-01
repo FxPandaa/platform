@@ -9,9 +9,13 @@ import {
   Container, 
   Alert,
   Fade,
-  CircularProgress
+  CircularProgress,
+  ToggleButton,
+  ToggleButtonGroup
 } from '@mui/material';
 import CloudQueueIcon from '@mui/icons-material/CloudQueue';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import PersonIcon from '@mui/icons-material/Person';
 import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://192.168.154.114:30001";
@@ -21,10 +25,23 @@ function Login() {
   const [password, setPassword] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
+  const [loginMode, setLoginMode] = useState('user'); // 'user' or 'admin'
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  const handleLoginModeChange = (event, newMode) => {
+    if (newMode !== null) {
+      setLoginMode(newMode);
+      setIsRegistering(false);
+      setError('');
+      setSuccess('');
+      setUsername('');
+      setPassword('');
+      setCompanyName('');
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -52,7 +69,23 @@ function Login() {
         const response = await axios.post(`${BACKEND_URL}/token`, formData);
         localStorage.setItem('token', response.data.access_token);
         localStorage.setItem('company', response.data.company);
-        navigate('/dashboard');
+        localStorage.setItem('isAdmin', response.data.is_admin);
+        
+        // Redirect based on admin status
+        if (loginMode === 'admin') {
+          if (response.data.is_admin) {
+            navigate('/admin');
+          } else {
+            setError('This account does not have admin privileges');
+            return;
+          }
+        } else {
+          if (response.data.is_admin) {
+            setError('Admin accounts cannot access user dashboard. Please use admin login.');
+            return;
+          }
+          navigate('/dashboard');
+        }
       }
     } catch (err) {
       setError(err.response?.data?.detail || 'Something went wrong');
@@ -86,21 +119,29 @@ function Login() {
             }}
           >
             {/* Logo Area */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 4 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
               <Box 
                 sx={{ 
                   width: 70, 
                   height: 70, 
                   borderRadius: '20px', 
-                  background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%)',
+                  background: loginMode === 'admin' 
+                    ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 50%, #b45309 100%)'
+                    : 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   mb: 2,
-                  boxShadow: '0 10px 40px rgba(99, 102, 241, 0.4)'
+                  boxShadow: loginMode === 'admin'
+                    ? '0 10px 40px rgba(245, 158, 11, 0.4)'
+                    : '0 10px 40px rgba(99, 102, 241, 0.4)',
+                  transition: 'all 0.3s ease'
                 }}
               >
-                <CloudQueueIcon sx={{ fontSize: 40, color: 'white' }} />
+                {loginMode === 'admin' 
+                  ? <AdminPanelSettingsIcon sx={{ fontSize: 40, color: 'white' }} />
+                  : <CloudQueueIcon sx={{ fontSize: 40, color: 'white' }} />
+                }
               </Box>
               <Typography 
                 variant="h5" 
@@ -113,11 +154,47 @@ function Login() {
                   WebkitTextFillColor: 'transparent',
                 }}
               >
-                {isRegistering ? 'Create Account' : 'Welcome Back'}
+                {isRegistering ? 'Create Account' : loginMode === 'admin' ? 'Admin Portal' : 'Welcome Back'}
               </Typography>
               <Typography variant="body2" align="center" sx={{ color: 'text.secondary', mt: 1 }}>
-                Self-Service Kubernetes Platform
+                {loginMode === 'admin' ? 'Platform Administration' : 'Self-Service Kubernetes Platform'}
               </Typography>
+            </Box>
+
+            {/* Login Mode Toggle */}
+            <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+              <ToggleButtonGroup
+                value={loginMode}
+                exclusive
+                onChange={handleLoginModeChange}
+                sx={{
+                  '& .MuiToggleButton-root': {
+                    px: 3,
+                    py: 1,
+                    border: '1px solid rgba(99, 102, 241, 0.3)',
+                    '&.Mui-selected': {
+                      bgcolor: loginMode === 'admin' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(99, 102, 241, 0.2)',
+                      borderColor: loginMode === 'admin' ? '#f59e0b' : '#6366f1',
+                      color: loginMode === 'admin' ? '#f59e0b' : '#6366f1',
+                      '&:hover': {
+                        bgcolor: loginMode === 'admin' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(99, 102, 241, 0.3)',
+                      }
+                    },
+                    '&:hover': {
+                      bgcolor: 'rgba(99, 102, 241, 0.1)',
+                    }
+                  }
+                }}
+              >
+                <ToggleButton value="user" disabled={loading}>
+                  <PersonIcon sx={{ mr: 1, fontSize: 20 }} />
+                  User
+                </ToggleButton>
+                <ToggleButton value="admin" disabled={loading}>
+                  <AdminPanelSettingsIcon sx={{ mr: 1, fontSize: 20 }} />
+                  Admin
+                </ToggleButton>
+              </ToggleButtonGroup>
             </Box>
 
             {error && (
@@ -192,30 +269,33 @@ function Login() {
               </Button>
             </form>
 
-            <Box sx={{ mt: 3, textAlign: 'center' }}>
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                {isRegistering ? 'Already have an account?' : "Don't have an account?"}
-              </Typography>
-              <Button 
-                sx={{ 
-                  mt: 0.5, 
-                  color: 'primary.main',
-                  fontWeight: 600,
-                  textTransform: 'none',
-                  '&:hover': {
-                    background: 'rgba(99, 102, 241, 0.1)'
-                  }
-                }}
-                onClick={() => {
-                  setIsRegistering(!isRegistering);
-                  setError('');
-                  setSuccess('');
-                }}
-                disabled={loading}
-              >
-                {isRegistering ? 'Sign In' : 'Create Account'}
-              </Button>
-            </Box>
+            {/* Only show register option for user mode */}
+            {loginMode === 'user' && (
+              <Box sx={{ mt: 3, textAlign: 'center' }}>
+                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                  {isRegistering ? 'Already have an account?' : "Don't have an account?"}
+                </Typography>
+                <Button 
+                  sx={{ 
+                    mt: 0.5, 
+                    color: 'primary.main',
+                    fontWeight: 600,
+                    textTransform: 'none',
+                    '&:hover': {
+                      background: 'rgba(99, 102, 241, 0.1)'
+                    }
+                  }}
+                  onClick={() => {
+                    setIsRegistering(!isRegistering);
+                    setError('');
+                    setSuccess('');
+                  }}
+                  disabled={loading}
+                >
+                  {isRegistering ? 'Sign In' : 'Create Account'}
+                </Button>
+              </Box>
+            )}
           </Paper>
         </Fade>
         

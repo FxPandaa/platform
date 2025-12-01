@@ -4,6 +4,7 @@ import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import Login from './Login';
 import Dashboard from './Dashboard';
 import Monitoring from './Monitoring';
+import AdminDashboard from './AdminDashboard';
 
 const darkTheme = createTheme({
   palette: {
@@ -240,6 +241,14 @@ function App() {
             element={
               <PrivateRoute>
                 <Monitoring />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/admin" 
+            element={
+              <PrivateRoute>
+                <AdminDashboard />
               </PrivateRoute>
             } 
           />
