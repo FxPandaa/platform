@@ -68,6 +68,22 @@ class User(Base):
 
 Base.metadata.create_all(bind=engine)
 
+# --- MIGRATION: Add is_admin column if not exists ---
+def migrate_database():
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    columns = [col['name'] for col in inspector.get_columns('users')]
+    if 'is_admin' not in columns:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0"))
+            conn.commit()
+            print("[MIGRATION] Added is_admin column to users table")
+
+try:
+    migrate_database()
+except Exception as e:
+    print(f"[MIGRATION] Note: {e}")
+
 # --- SECURITY ---
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
