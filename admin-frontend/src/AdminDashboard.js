@@ -24,8 +24,7 @@ import {
   Fade,
   Tooltip,
   Tabs,
-  Tab,
-  Divider
+  Tab
 } from '@mui/material';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import BusinessIcon from '@mui/icons-material/Business';
@@ -50,7 +49,7 @@ function AdminDashboard() {
   const [deleteDialog, setDeleteDialog] = useState({ open: false, type: null, item: null });
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('admin_token');
   const headers = { Authorization: `Bearer ${token}` };
 
   const fetchData = useCallback(async () => {
@@ -66,8 +65,8 @@ function AdminDashboard() {
       setUsers(usersRes.data);
     } catch (error) {
       console.error('Error fetching admin data:', error);
-      if (error.response?.status === 403) {
-        setSnackbar({ open: true, message: 'Access denied. Admin privileges required.', severity: 'error' });
+      if (error.response?.status === 403 || error.response?.status === 401) {
+        setSnackbar({ open: true, message: 'Session expired. Please login again.', severity: 'error' });
         handleLogout();
       } else {
         setSnackbar({ open: true, message: 'Failed to fetch data', severity: 'error' });
@@ -75,22 +74,18 @@ function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [headers]);
+  }, []);
 
   useEffect(() => {
-    // Check if user is admin
-    const isAdmin = localStorage.getItem('isAdmin');
-    if (isAdmin !== 'true') {
+    if (!token) {
       navigate('/');
       return;
     }
     fetchData();
-  }, [fetchData, navigate]);
+  }, [fetchData, navigate, token]);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('company');
-    localStorage.removeItem('isAdmin');
+    localStorage.removeItem('admin_token');
     navigate('/');
   };
 

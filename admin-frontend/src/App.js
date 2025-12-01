@@ -2,21 +2,21 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import Login from './Login';
-import Dashboard from './Dashboard';
-import Monitoring from './Monitoring';
+import AdminDashboard from './AdminDashboard';
 
-const darkTheme = createTheme({
+// Admin theme with orange accent
+const adminTheme = createTheme({
   palette: {
     mode: 'dark',
     primary: {
-      main: '#6366f1', // Modern indigo/paars
-      light: '#818cf8',
-      dark: '#4f46e5',
+      main: '#f59e0b', // Orange for admin
+      light: '#fbbf24',
+      dark: '#d97706',
     },
     secondary: {
-      main: '#10b981', // Elegant groen voor success
-      light: '#34d399',
-      dark: '#059669',
+      main: '#6366f1',
+      light: '#818cf8',
+      dark: '#4f46e5',
     },
     error: {
       main: '#ef4444',
@@ -35,8 +35,8 @@ const darkTheme = createTheme({
       light: '#34d399',
     },
     background: {
-      default: '#0f172a', // Donker slate
-      paper: '#1e293b',   // Lichter slate voor cards
+      default: '#0f172a',
+      paper: '#1e293b',
     },
     text: {
       primary: '#f1f5f9',
@@ -77,20 +77,20 @@ const darkTheme = createTheme({
           padding: '8px 16px',
           boxShadow: 'none',
           '&:hover': {
-            boxShadow: '0 4px 12px rgba(99, 102, 241, 0.25)',
+            boxShadow: '0 4px 12px rgba(245, 158, 11, 0.25)',
           },
         },
         contained: {
-          background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+          background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
           '&:hover': {
-            background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+            background: 'linear-gradient(135deg, #d97706 0%, #b45309 100%)',
           },
         },
         outlined: {
-          borderColor: 'rgba(148, 163, 184, 0.3)',
+          borderColor: 'rgba(245, 158, 11, 0.3)',
           '&:hover': {
-            borderColor: '#6366f1',
-            backgroundColor: 'rgba(99, 102, 241, 0.08)',
+            borderColor: '#f59e0b',
+            backgroundColor: 'rgba(245, 158, 11, 0.08)',
           },
         },
       },
@@ -102,32 +102,6 @@ const darkTheme = createTheme({
           backgroundImage: 'none',
           border: '1px solid rgba(148, 163, 184, 0.1)',
           boxShadow: '0 4px 24px rgba(0, 0, 0, 0.2)',
-          transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-          '&:hover': {
-            transform: 'translateY(-2px)',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-          },
-        },
-      },
-    },
-    MuiChip: {
-      styleOverrides: {
-        root: {
-          fontWeight: 500,
-        },
-        filled: {
-          '&.MuiChip-colorSuccess': {
-            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-          },
-          '&.MuiChip-colorError': {
-            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-          },
-          '&.MuiChip-colorWarning': {
-            background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-          },
-          '&.MuiChip-colorInfo': {
-            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-          },
         },
       },
     },
@@ -149,43 +123,12 @@ const darkTheme = createTheme({
               borderColor: 'rgba(148, 163, 184, 0.2)',
             },
             '&:hover fieldset': {
-              borderColor: 'rgba(99, 102, 241, 0.5)',
+              borderColor: 'rgba(245, 158, 11, 0.5)',
             },
             '&.Mui-focused fieldset': {
-              borderColor: '#6366f1',
+              borderColor: '#f59e0b',
             },
           },
-        },
-      },
-    },
-    MuiTabs: {
-      styleOverrides: {
-        indicator: {
-          height: 3,
-          borderRadius: 2,
-          background: 'linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%)',
-        },
-      },
-    },
-    MuiTab: {
-      styleOverrides: {
-        root: {
-          textTransform: 'none',
-          fontWeight: 500,
-          '&.Mui-selected': {
-            fontWeight: 600,
-          },
-        },
-      },
-    },
-    MuiLinearProgress: {
-      styleOverrides: {
-        root: {
-          borderRadius: 4,
-          backgroundColor: 'rgba(148, 163, 184, 0.1)',
-        },
-        bar: {
-          borderRadius: 4,
         },
       },
     },
@@ -206,23 +149,19 @@ const darkTheme = createTheme({
           backgroundColor: 'rgba(245, 158, 11, 0.1)',
           border: '1px solid rgba(245, 158, 11, 0.3)',
         },
-        standardInfo: {
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          border: '1px solid rgba(59, 130, 246, 0.3)',
-        },
       },
     },
   },
 });
 
 function PrivateRoute({ children }) {
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('admin_token');
   return token ? children : <Navigate to="/" />;
 }
 
 function App() {
   return (
-    <ThemeProvider theme={darkTheme}>
+    <ThemeProvider theme={adminTheme}>
       <CssBaseline />
       <Router>
         <Routes>
@@ -231,15 +170,7 @@ function App() {
             path="/dashboard" 
             element={
               <PrivateRoute>
-                <Dashboard />
-              </PrivateRoute>
-            } 
-          />
-          <Route 
-            path="/monitoring" 
-            element={
-              <PrivateRoute>
-                <Monitoring />
+                <AdminDashboard />
               </PrivateRoute>
             } 
           />

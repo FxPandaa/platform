@@ -37,6 +37,13 @@ jobs:
           docker build -t fxpandaa/platform:frontend-latest .
           docker push fxpandaa/platform:frontend-latest
 
+      # 3.5 Build & Push Admin Frontend
+      - name: Build and Push Admin Frontend
+        run: |
+          cd admin-frontend
+          docker build -t fxpandaa/platform:admin-frontend-latest .
+          docker push fxpandaa/platform:admin-frontend-latest
+
       # 4. Deploy direct op de VM (via kubectl)
       - name: Deploy to K3s
         run: |
@@ -54,3 +61,4 @@ jobs:
           # 3. Forceer een update van de pods
           sudo kubectl rollout restart deployment/backend -n admin-platform --kubeconfig=/etc/rancher/k3s/k3s.yaml
           sudo kubectl rollout restart deployment/frontend -n admin-platform --kubeconfig=/etc/rancher/k3s/k3s.yaml
+          sudo kubectl rollout restart deployment/admin-frontend -n admin-platform --kubeconfig=/etc/rancher/k3s/k3s.yaml

@@ -11,7 +11,7 @@ import {
   Fade,
   CircularProgress
 } from '@mui/material';
-import CloudQueueIcon from '@mui/icons-material/CloudQueue';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://192.168.154.114:30001";
@@ -19,49 +19,31 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://192.168.154.114
 function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [companyName, setCompanyName] = useState('');
-  const [isRegistering, setIsRegistering] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setSuccess('');
     setLoading(true);
 
     try {
-      if (isRegistering) {
-        await axios.post(`${BACKEND_URL}/register`, {
-          username,
-          password,
-          company_name: companyName
-        });
-        setIsRegistering(false);
-        setSuccess('Account created successfully! Please login.');
-        setUsername('');
-        setPassword('');
-        setCompanyName('');
-      } else {
-        const formData = new FormData();
-        formData.append('username', username);
-        formData.append('password', password);
-        
-        const response = await axios.post(`${BACKEND_URL}/token`, formData);
-        
-        // Check if user is admin - admins should use admin portal
-        if (response.data.is_admin) {
-          setError('Admin accounts must use the Admin Portal to login.');
-          setLoading(false);
-          return;
-        }
-        
-        localStorage.setItem('token', response.data.access_token);
-        localStorage.setItem('company', response.data.company);
-        navigate('/dashboard');
+      const formData = new FormData();
+      formData.append('username', username);
+      formData.append('password', password);
+      
+      const response = await axios.post(`${BACKEND_URL}/token`, formData);
+      
+      // Check if user is admin
+      if (!response.data.is_admin) {
+        setError('This portal is for administrators only.');
+        setLoading(false);
+        return;
       }
+      
+      localStorage.setItem('admin_token', response.data.access_token);
+      navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.detail || 'Something went wrong');
     } finally {
@@ -89,8 +71,8 @@ function Login() {
               borderRadius: 4, 
               bgcolor: 'rgba(30, 41, 59, 0.8)',
               backdropFilter: 'blur(20px)',
-              border: '1px solid rgba(99, 102, 241, 0.2)',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 100px rgba(99, 102, 241, 0.1)'
+              border: '1px solid rgba(245, 158, 11, 0.2)',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 100px rgba(245, 158, 11, 0.1)'
             }}
           >
             {/* Logo Area */}
@@ -100,31 +82,31 @@ function Login() {
                   width: 70, 
                   height: 70, 
                   borderRadius: '20px', 
-                  background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%)',
+                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 50%, #b45309 100%)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   mb: 2,
-                  boxShadow: '0 10px 40px rgba(99, 102, 241, 0.4)'
+                  boxShadow: '0 10px 40px rgba(245, 158, 11, 0.4)'
                 }}
               >
-                <CloudQueueIcon sx={{ fontSize: 40, color: 'white' }} />
+                <AdminPanelSettingsIcon sx={{ fontSize: 40, color: 'white' }} />
               </Box>
               <Typography 
                 variant="h5" 
                 align="center" 
                 sx={{ 
                   fontWeight: 700, 
-                  background: 'linear-gradient(135deg, #f8fafc 0%, #94a3b8 100%)',
+                  background: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)',
                   backgroundClip: 'text',
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent',
                 }}
               >
-                {isRegistering ? 'Create Account' : 'Welcome Back'}
+                Admin Portal
               </Typography>
               <Typography variant="body2" align="center" sx={{ color: 'text.secondary', mt: 1 }}>
-                Self-Service Kubernetes Platform
+                Platform Administration
               </Typography>
             </Box>
 
@@ -133,17 +115,11 @@ function Login() {
                 <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>{error}</Alert>
               </Fade>
             )}
-            
-            {success && (
-              <Fade in>
-                <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>{success}</Alert>
-              </Fade>
-            )}
 
             <form onSubmit={handleSubmit}>
               <TextField
                 fullWidth
-                label="Username"
+                label="Admin Username"
                 variant="outlined"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -151,20 +127,6 @@ function Login() {
                 disabled={loading}
                 sx={{ mb: 2.5 }}
               />
-              {isRegistering && (
-                <Fade in={isRegistering}>
-                  <TextField
-                    fullWidth
-                    label="Company Name"
-                    variant="outlined"
-                    value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
-                    required
-                    disabled={loading}
-                    sx={{ mb: 2.5 }}
-                  />
-                </Fade>
-              )}
               <TextField
                 fullWidth
                 label="Password"
@@ -195,35 +157,10 @@ function Login() {
                 {loading ? (
                   <CircularProgress size={24} sx={{ color: 'white' }} />
                 ) : (
-                  isRegistering ? 'Create Account' : 'Sign In'
+                  'Sign In'
                 )}
               </Button>
             </form>
-
-            <Box sx={{ mt: 3, textAlign: 'center' }}>
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                {isRegistering ? 'Already have an account?' : "Don't have an account?"}
-              </Typography>
-              <Button 
-                sx={{ 
-                  mt: 0.5, 
-                  color: 'primary.main',
-                  fontWeight: 600,
-                  textTransform: 'none',
-                  '&:hover': {
-                    background: 'rgba(99, 102, 241, 0.1)'
-                  }
-                }}
-                onClick={() => {
-                  setIsRegistering(!isRegistering);
-                  setError('');
-                  setSuccess('');
-                }}
-                disabled={loading}
-              >
-                {isRegistering ? 'Sign In' : 'Create Account'}
-              </Button>
-            </Box>
           </Paper>
         </Fade>
         
@@ -238,7 +175,7 @@ function Login() {
             opacity: 0.6
           }}
         >
-          Enterprise Kubernetes Management Platform
+          Shield SaaS - Platform Administration
         </Typography>
       </Container>
     </Box>
