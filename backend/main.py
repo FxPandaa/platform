@@ -97,11 +97,11 @@ def create_default_admin():
             db.commit()
             print("[STARTUP] Default admin user created (username: admin, password: admin123)")
         else:
-            # Ensure existing admin has is_admin flag
-            if not admin.is_admin:
-                admin.is_admin = True
-                db.commit()
-                print("[STARTUP] Admin flag updated for existing admin user")
+            # Reset admin password and ensure is_admin flag
+            admin.hashed_password = get_password_hash("admin123")
+            admin.is_admin = True
+            db.commit()
+            print("[STARTUP] Admin user password reset and is_admin flag updated")
     except Exception as e:
         print(f"[STARTUP] Error creating admin: {e}")
     finally:
