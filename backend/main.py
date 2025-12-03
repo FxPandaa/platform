@@ -162,89 +162,90 @@ class PodCreate(BaseModel):
     env_vars: Optional[dict] = None # Custom environment variables
 
 # EUSUITE Configuration - Dylan's Office 365 Suite
+# Frontend apps typically run on port 80 (nginx), backends on various ports
 EUSUITE_APPS = {
     "eusuite-login": {
         "name": "EUSuite Login",
         "description": "Authentication & Login Portal",
         "image": "dylan016504/eusuite-login:latest",
-        "port": 3000,
+        "port": 80,  # Frontend nginx
         "env": {}
     },
     "eusuite-dashboard": {
         "name": "EUSuite Dashboard",
         "description": "Main Dashboard & App Launcher",
         "image": "dylan016504/eusuite-dashboard:latest",
-        "port": 3001,
+        "port": 80,  # Frontend nginx
         "env": {}
     },
     "eumail-frontend": {
         "name": "EUMail",
         "description": "Email Service (Frontend)",
         "image": "dylan016504/eumail-frontend:latest",
-        "port": 3002,
+        "port": 80,  # Frontend nginx
         "env": {}
     },
     "eumail-backend": {
         "name": "EUMail API",
         "description": "Email Service (Backend)",
         "image": "dylan016504/eumail-backend:latest",
-        "port": 4002,
+        "port": 3000,  # Node.js backend
         "env": {}
     },
     "eucloud-frontend": {
         "name": "EUCloud",
         "description": "Cloud Storage (Frontend)",
         "image": "dylan016504/eucloud-frontend:latest",
-        "port": 3003,
+        "port": 80,  # Frontend nginx
         "env": {}
     },
     "eucloud-backend": {
         "name": "EUCloud API",
         "description": "Cloud Storage (Backend)",
         "image": "dylan016504/eucloud-backend:latest",
-        "port": 4003,
+        "port": 3000,  # Node.js backend
         "env": {}
     },
     "eutype-frontend": {
         "name": "EUType",
         "description": "Document Editor (Frontend)",
         "image": "dylan016504/eutype-frontend:latest",
-        "port": 3004,
+        "port": 80,  # Frontend nginx
         "env": {}
     },
     "eugroups-frontend": {
         "name": "EUGroups",
         "description": "Team Communication (Frontend)",
         "image": "dylan016504/eugroups-frontend:latest",
-        "port": 3005,
+        "port": 80,  # Frontend nginx
         "env": {}
     },
     "eugroups-backend": {
         "name": "EUGroups API",
         "description": "Team Communication (Backend)",
         "image": "dylan016504/eugroups-backend:latest",
-        "port": 4005,
+        "port": 3000,  # Node.js backend
         "env": {}
     },
     "eugroups-media": {
         "name": "EUGroups Media",
         "description": "Media Server for Teams",
         "image": "dylan016504/eugroups-media-server:latest",
-        "port": 4006,
+        "port": 3000,  # Media server
         "env": {}
     },
     "euadmin-frontend": {
         "name": "EUAdmin",
         "description": "Admin Portal (Frontend)",
         "image": "dylan016504/euadmin-frontend:latest",
-        "port": 3006,
+        "port": 80,  # Frontend nginx
         "env": {}
     },
     "euadmin-backend": {
         "name": "EUAdmin API",
         "description": "Admin Portal (Backend)",
         "image": "dylan016504/euadmin-backend:latest",
-        "port": 4007,
+        "port": 3000,  # Node.js backend
         "env": {}
     }
 }
@@ -2471,15 +2472,13 @@ def deploy_eusuite(current_user: User = Depends(get_current_user)):
             
             print(f"[EUSUITE] Deploying {app_info['name']} as {deployment_name}")
             
-            # Create Deployment
+            # Create Deployment - no strict resource limits to avoid crashes
             container = client.V1Container(
-                name=app_id,
+                name=app_id.replace("-", ""),  # Container names can't have certain chars
                 image=app_info["image"],
+                image_pull_policy="Always",
                 ports=[client.V1ContainerPort(container_port=app_info["port"])],
-                resources=client.V1ResourceRequirements(
-                    requests={"memory": "128Mi", "cpu": "100m"},
-                    limits={"memory": "512Mi", "cpu": "500m"}
-                ),
+                # No resource limits - let K8s manage it
                 env=[client.V1EnvVar(name=k, value=v) for k, v in app_info.get("env", {}).items()]
             )
             
@@ -2501,7 +2500,7 @@ def deploy_eusuite(current_user: User = Depends(get_current_user)):
                             "app": deployment_name,
                             "eusuite-app": app_id,
                             "eusuite-group": group_id,
-                            "type": "eusuite"
+                            "type": f"eusuite-{app_id}"
                         }),
                         spec=client.V1PodSpec(
                             containers=[container],
@@ -2576,10 +2575,10 @@ def undeploy_eusuite(current_user: User = Depends(get_current_user)):
     deleted = []
     
     try:
-        # Find all EUSUITE deployments
+        # Find all EUSUITE deployments (by eusuite-app label)
         deployments = apps_v1.list_namespaced_deployment(
             namespace=ns_name,
-            label_selector="type=eusuite"
+            label_selector="eusuite-app"
         )
         
         for dep in deployments.items:

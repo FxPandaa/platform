@@ -136,6 +136,7 @@ function Dashboard() {
   const [eusuiteOpen, setEusuiteOpen] = useState(false);
   const [eusuiteDeploying, setEusuiteDeploying] = useState(false);
   const [eusuiteResult, setEusuiteResult] = useState(null);
+  const [eusuiteDetailOpen, setEusuiteDetailOpen] = useState(false);
 
   const showNotification = (title, message, severity = 'success') => {
     setSnackbar({ open: true, message, severity, title });
@@ -658,15 +659,24 @@ function Dashboard() {
     if (t.startsWith('nginx') || t.startsWith('custom')) return 'single';
     if (t.startsWith('postgres') || t.startsWith('mysql') || t.startsWith('redis')) return 'db';
     if (t.startsWith('uptime-kuma')) return 'monitor';
+    if (t.startsWith('eusuite')) return 'eusuite';
     return 'other';
   };
+
+  // Separate EUSUITE pods from regular pods
+  const eusuitePods = pods.filter(pod => pod.type && pod.type.toLowerCase().startsWith('eusuite'));
+  const regularPods = pods.filter(pod => !pod.type || !pod.type.toLowerCase().startsWith('eusuite'));
+  
+  // Count running EUSUITE apps
+  const eusuiteRunning = eusuitePods.filter(p => p.status === 'Running').length;
+  const eusuiteTotal = eusuitePods.length;
 
   // Debugging: Log all pods before filtering
   useEffect(() => {
     console.log("Current pods in state:", pods);
   }, [pods]);
 
-  const filteredPods = pods.filter(pod => {
+  const filteredPods = regularPods.filter(pod => {
     const cat = getCategory(pod.type);
     if (tabValue === 0) return true;
     if (tabValue === 1) return cat === 'app';
@@ -756,6 +766,94 @@ function Dashboard() {
         </Tabs>
 
         <Grid container spacing={3}>
+          {/* EUSUITE Grouped Card - Only show if there are EUSUITE pods */}
+          {eusuitePods.length > 0 && tabValue === 0 && (
+            <Grid item xs={12} sm={6} md={4}>
+              <Card 
+                elevation={0} 
+                sx={{ 
+                  bgcolor: 'background.paper', 
+                  border: '2px solid #f59e0b',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  '&:hover': { 
+                    transform: 'translateY(-4px)',
+                    boxShadow: '0 8px 24px rgba(245, 158, 11, 0.3)'
+                  }
+                }}
+                onClick={() => setEusuiteDetailOpen(true)}
+              >
+                <CardContent>
+                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <Avatar sx={{ bgcolor: '#f59e0b', width: 40, height: 40 }}>
+                        <AppsIcon />
+                      </Avatar>
+                      <Typography variant="h6" component="div" fontWeight="bold" color="#f59e0b">
+                        EUSUITE
+                      </Typography>
+                    </Box>
+                    <Chip 
+                      label={`${eusuiteRunning}/${eusuiteTotal} Running`}
+                      color={eusuiteRunning === eusuiteTotal ? 'success' : (eusuiteRunning > 0 ? 'warning' : 'error')}
+                      size="small" 
+                      variant="filled"
+                    />
+                  </Box>
+                  <Typography color="textSecondary" variant="body2" gutterBottom>
+                    Dylan's Office 365 Suite
+                  </Typography>
+                  
+                  <Box sx={{ mt: 2, mb: 1 }}>
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={(eusuiteRunning / eusuiteTotal) * 100} 
+                      sx={{ 
+                        height: 8, 
+                        borderRadius: 4,
+                        bgcolor: 'rgba(245, 158, 11, 0.2)',
+                        '& .MuiLinearProgress-bar': { bgcolor: '#f59e0b' }
+                      }}
+                    />
+                  </Box>
+                  
+                  <Box display="flex" flexWrap="wrap" gap={0.5} mt={2}>
+                    {eusuitePods.slice(0, 6).map(p => (
+                      <Chip 
+                        key={p.name}
+                        label={p.type.replace('eusuite-', '').split('-')[0]}
+                        size="small"
+                        color={p.status === 'Running' ? 'success' : 'error'}
+                        sx={{ fontSize: '0.65rem', height: 20 }}
+                      />
+                    ))}
+                    {eusuitePods.length > 6 && (
+                      <Chip 
+                        label={`+${eusuitePods.length - 6} more`}
+                        size="small"
+                        variant="outlined"
+                        sx={{ fontSize: '0.65rem', height: 20 }}
+                      />
+                    )}
+                  </Box>
+
+                  <Typography variant="body1" color="primary.main" fontWeight="bold" mt={2}>
+                    €{(eusuiteTotal * 5).toFixed(2)} / mo
+                  </Typography>
+                  
+                  <Button 
+                    fullWidth 
+                    variant="outlined" 
+                    sx={{ mt: 2, borderColor: '#f59e0b', color: '#f59e0b' }}
+                    onClick={(e) => { e.stopPropagation(); setEusuiteDetailOpen(true); }}
+                  >
+                    View All Apps →
+                  </Button>
+                </CardContent>
+              </Card>
+            </Grid>
+          )}
+
           {filteredPods.map((pod) => {
             const linkedPods = pod.group_id 
               ? pods.filter(p => p.group_id === pod.group_id && p.name !== pod.name)
@@ -1827,6 +1925,127 @@ function Dashboard() {
               </Button>
             </>
           )}
+        </DialogActions>
+      </Dialog>
+
+      {/* EUSUITE Detail Dialog - Shows all deployed EUSUITE apps */}
+      <Dialog 
+        open={eusuiteDetailOpen} 
+        onClose={() => setEusuiteDetailOpen(false)} 
+        maxWidth="lg" 
+        fullWidth
+        PaperProps={{ sx: { bgcolor: 'background.paper', borderRadius: 2 } }}
+      >
+        <DialogTitle sx={{ 
+          borderBottom: '1px solid rgba(255,255,255,0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <Box display="flex" alignItems="center" gap={2}>
+            <Avatar sx={{ bgcolor: '#f59e0b', width: 48, height: 48 }}>
+              <AppsIcon />
+            </Avatar>
+            <Box>
+              <Typography variant="h5" fontWeight="bold">EUSUITE - Office 365 Suite</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {eusuiteRunning} of {eusuiteTotal} apps running • by Dylan016504
+              </Typography>
+            </Box>
+          </Box>
+          <Chip 
+            label={eusuiteRunning === eusuiteTotal ? 'All Healthy' : `${eusuiteTotal - eusuiteRunning} Issues`}
+            color={eusuiteRunning === eusuiteTotal ? 'success' : 'warning'}
+            variant="filled"
+          />
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <Grid container spacing={2}>
+            {eusuitePods.map(pod => (
+              <Grid item xs={12} sm={6} md={4} key={pod.name}>
+                <Paper sx={{ 
+                  p: 2, 
+                  bgcolor: 'rgba(255,255,255,0.02)',
+                  border: pod.status === 'Running' 
+                    ? '1px solid rgba(34, 197, 94, 0.3)' 
+                    : '1px solid rgba(239, 68, 68, 0.3)'
+                }}>
+                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                    <Typography variant="subtitle1" fontWeight="bold">
+                      {pod.type.replace('eusuite-', '').replace(/-/g, ' ').toUpperCase()}
+                    </Typography>
+                    <Chip 
+                      label={pod.status} 
+                      size="small"
+                      color={pod.status === 'Running' ? 'success' : 'error'}
+                    />
+                  </Box>
+                  
+                  <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                    {pod.name.substring(0, 40)}...
+                  </Typography>
+                  
+                  {pod.message && (
+                    <Alert severity="error" sx={{ mt: 1, py: 0, fontSize: '0.7rem' }}>
+                      {pod.message.substring(0, 60)}...
+                    </Alert>
+                  )}
+                  
+                  <Box display="flex" gap={1} mt={2}>
+                    {pod.node_port && (
+                      <Button 
+                        size="small" 
+                        variant="outlined"
+                        href={`http://${pod.public_ip || '192.168.154.114'}:${pod.node_port}`}
+                        target="_blank"
+                        startIcon={<OpenInNewIcon />}
+                        sx={{ fontSize: '0.7rem' }}
+                      >
+                        Open
+                      </Button>
+                    )}
+                    <Button 
+                      size="small" 
+                      variant="outlined"
+                      onClick={() => {
+                        setEusuiteDetailOpen(false);
+                        handleViewLogs(pod.name);
+                      }}
+                      sx={{ fontSize: '0.7rem' }}
+                    >
+                      Logs
+                    </Button>
+                  </Box>
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+          
+          {eusuitePods.length === 0 && (
+            <Box textAlign="center" py={4}>
+              <Typography color="text.secondary">No EUSUITE apps deployed yet.</Typography>
+              <Button 
+                variant="contained" 
+                sx={{ mt: 2, bgcolor: '#f59e0b' }}
+                onClick={() => { setEusuiteDetailOpen(false); setEusuiteOpen(true); }}
+              >
+                Deploy EUSUITE Now
+              </Button>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.1)', justifyContent: 'space-between' }}>
+          <Button 
+            onClick={handleUndeployEusuite} 
+            color="error" 
+            startIcon={<DeleteIcon />}
+            disabled={eusuitePods.length === 0}
+          >
+            Undeploy All EUSUITE Apps
+          </Button>
+          <Button onClick={() => setEusuiteDetailOpen(false)} variant="contained">
+            Close
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
