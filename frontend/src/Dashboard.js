@@ -65,7 +65,9 @@ import {
   CloudDone as CloudDoneIcon,
   Business as BusinessIcon,
   DeleteForever as DeleteForeverIcon,
-  TrendingUp as TrendingUpIcon
+  TrendingUp as TrendingUpIcon,
+  RocketLaunch as RocketLaunchIcon,
+  Apps as AppsIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 
@@ -129,6 +131,11 @@ function Dashboard() {
     severity: 'success', // 'success', 'error', 'warning', 'info'
     title: ''
   });
+
+  // EUSUITE state
+  const [eusuiteOpen, setEusuiteOpen] = useState(false);
+  const [eusuiteDeploying, setEusuiteDeploying] = useState(false);
+  const [eusuiteResult, setEusuiteResult] = useState(null);
 
   const showNotification = (title, message, severity = 'success') => {
     setSnackbar({ open: true, message, severity, title });
@@ -604,6 +611,46 @@ function Dashboard() {
     return pods.reduce((total, pod) => total + (pod.cost || 0), 0).toFixed(2);
   };
 
+  // EUSUITE Deploy Handler
+  const handleDeployEusuite = async () => {
+    setEusuiteDeploying(true);
+    setEusuiteResult(null);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post(`${BACKEND_URL}/eusuite/deploy`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setEusuiteResult(response.data);
+      if (response.data.success) {
+        showNotification('EUSUITE Deployed!', `${response.data.deployed.length} apps successfully deployed`, 'success');
+      } else {
+        showNotification('EUSUITE Partial Deploy', `${response.data.deployed.length} deployed, ${response.data.failed.length} failed`, 'warning');
+      }
+      fetchPods();
+    } catch (error) {
+      console.error("EUSUITE deploy error:", error);
+      showNotification('EUSUITE Error', error.response?.data?.detail || 'Failed to deploy EUSUITE', 'error');
+    } finally {
+      setEusuiteDeploying(false);
+    }
+  };
+
+  const handleUndeployEusuite = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`${BACKEND_URL}/eusuite/undeploy`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      showNotification('EUSUITE Removed', 'All EUSUITE apps have been undeployed', 'info');
+      setEusuiteOpen(false);
+      setEusuiteResult(null);
+      fetchPods();
+    } catch (error) {
+      console.error("EUSUITE undeploy error:", error);
+      showNotification('EUSUITE Error', error.response?.data?.detail || 'Failed to undeploy', 'error');
+    }
+  };
+
   const getCategory = (type) => {
     if (!type) return 'other';
     const t = type.toLowerCase();
@@ -672,14 +719,32 @@ function Dashboard() {
           <Typography variant="h4" component="h1" color="textPrimary" fontWeight="600">
             Services
           </Typography>
-          <Button 
-            variant="contained" 
-            startIcon={<AddIcon />} 
-            onClick={() => setOpen(true)}
-            size="large"
-          >
-            New Service
-          </Button>
+          <Box display="flex" gap={2}>
+            <Button 
+              variant="outlined" 
+              startIcon={<RocketLaunchIcon />} 
+              onClick={() => setEusuiteOpen(true)}
+              size="large"
+              sx={{ 
+                borderColor: '#f59e0b', 
+                color: '#f59e0b',
+                '&:hover': { 
+                  borderColor: '#d97706', 
+                  bgcolor: 'rgba(245, 158, 11, 0.1)' 
+                }
+              }}
+            >
+              Deploy EUSUITE
+            </Button>
+            <Button 
+              variant="contained" 
+              startIcon={<AddIcon />} 
+              onClick={() => setOpen(true)}
+              size="large"
+            >
+              New Service
+            </Button>
+          </Box>
         </Box>
 
         <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
@@ -1588,6 +1653,182 @@ function Dashboard() {
           </Typography>
         </Alert>
       </Snackbar>
+
+      {/* EUSUITE Deploy Dialog */}
+      <Dialog 
+        open={eusuiteOpen} 
+        onClose={() => !eusuiteDeploying && setEusuiteOpen(false)} 
+        maxWidth="md" 
+        fullWidth
+        PaperProps={{ sx: { bgcolor: 'background.paper', borderRadius: 2 } }}
+      >
+        <DialogTitle sx={{ 
+          borderBottom: '1px solid rgba(255,255,255,0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 2
+        }}>
+          <Avatar sx={{ bgcolor: '#f59e0b', width: 48, height: 48 }}>
+            <AppsIcon />
+          </Avatar>
+          <Box>
+            <Typography variant="h5" fontWeight="bold">EUSUITE - Office 365 Alternative</Typography>
+            <Typography variant="body2" color="text.secondary">
+              by Dylan0165 • github.com/Dylan0165/EUSUITE
+            </Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          {!eusuiteResult ? (
+            <Box>
+              <Alert severity="info" sx={{ mb: 3 }}>
+                <Typography variant="subtitle2" fontWeight="bold">One-Click Deploy</Typography>
+                <Typography variant="body2">
+                  Deploy the complete EUSUITE office suite with a single click. This includes:
+                </Typography>
+              </Alert>
+              
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                {[
+                  { name: 'Login Portal', desc: 'Authentication', icon: '🔐' },
+                  { name: 'Dashboard', desc: 'App Launcher', icon: '🏠' },
+                  { name: 'EUMail', desc: 'Email Service', icon: '📧' },
+                  { name: 'EUCloud', desc: 'Cloud Storage', icon: '☁️' },
+                  { name: 'EUType', desc: 'Document Editor', icon: '📄' },
+                  { name: 'EUGroups', desc: 'Team Chat', icon: '💬' },
+                  { name: 'EUAdmin', desc: 'Admin Portal', icon: '⚙️' },
+                  { name: '+ Backends', desc: '6 API Services', icon: '🔧' }
+                ].map(app => (
+                  <Grid item xs={6} sm={3} key={app.name}>
+                    <Paper sx={{ 
+                      p: 2, 
+                      textAlign: 'center', 
+                      bgcolor: 'rgba(255,255,255,0.05)',
+                      border: '1px solid rgba(255,255,255,0.1)'
+                    }}>
+                      <Typography variant="h4">{app.icon}</Typography>
+                      <Typography variant="subtitle2" fontWeight="bold">{app.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">{app.desc}</Typography>
+                    </Paper>
+                  </Grid>
+                ))}
+              </Grid>
+
+              {eusuiteDeploying && (
+                <Box sx={{ textAlign: 'center', py: 3 }}>
+                  <CircularProgress size={60} sx={{ color: '#f59e0b', mb: 2 }} />
+                  <Typography variant="h6">Deploying EUSUITE...</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    This may take a few minutes. Please wait...
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          ) : (
+            <Box>
+              <Alert severity={eusuiteResult.success ? "success" : "warning"} sx={{ mb: 3 }}>
+                <Typography variant="subtitle2" fontWeight="bold">
+                  {eusuiteResult.success ? '✓ Deployment Complete!' : '⚠ Partial Deployment'}
+                </Typography>
+                <Typography variant="body2">{eusuiteResult.message}</Typography>
+              </Alert>
+
+              {eusuiteResult.deployed.length > 0 && (
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Deployed Apps ({eusuiteResult.deployed.length})
+                  </Typography>
+                  <TableContainer component={Paper} sx={{ bgcolor: 'rgba(255,255,255,0.02)' }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>App</TableCell>
+                          <TableCell>Description</TableCell>
+                          <TableCell>Access URL</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {eusuiteResult.deployed.map(app => (
+                          <TableRow key={app.id}>
+                            <TableCell>
+                              <Typography fontWeight="bold">{app.name}</Typography>
+                            </TableCell>
+                            <TableCell>{app.description}</TableCell>
+                            <TableCell>
+                              <Button 
+                                size="small" 
+                                href={app.url} 
+                                target="_blank"
+                                startIcon={<OpenInNewIcon />}
+                              >
+                                Open
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+              )}
+
+              {eusuiteResult.failed.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle1" fontWeight="bold" color="error" gutterBottom>
+                    Failed Apps ({eusuiteResult.failed.length})
+                  </Typography>
+                  {eusuiteResult.failed.map(app => (
+                    <Alert severity="error" key={app.id} sx={{ mb: 1 }}>
+                      {app.name}: {app.error}
+                    </Alert>
+                  ))}
+                </Box>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          {eusuiteResult ? (
+            <>
+              <Button 
+                onClick={handleUndeployEusuite} 
+                color="error" 
+                startIcon={<DeleteIcon />}
+              >
+                Undeploy All
+              </Button>
+              <Button 
+                onClick={() => { setEusuiteOpen(false); setEusuiteResult(null); }} 
+                variant="contained"
+              >
+                Done
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button 
+                onClick={() => setEusuiteOpen(false)} 
+                color="inherit"
+                disabled={eusuiteDeploying}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleDeployEusuite} 
+                variant="contained"
+                disabled={eusuiteDeploying}
+                startIcon={eusuiteDeploying ? <CircularProgress size={20} /> : <RocketLaunchIcon />}
+                sx={{ 
+                  bgcolor: '#f59e0b', 
+                  '&:hover': { bgcolor: '#d97706' }
+                }}
+              >
+                {eusuiteDeploying ? 'Deploying...' : 'Deploy EUSUITE'}
+              </Button>
+            </>
+          )}
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

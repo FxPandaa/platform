@@ -161,6 +161,94 @@ class PodCreate(BaseModel):
     custom_image: Optional[str] = None # Optioneel, voor als service_type 'custom' is
     env_vars: Optional[dict] = None # Custom environment variables
 
+# EUSUITE Configuration - Dylan's Office 365 Suite
+EUSUITE_APPS = {
+    "eusuite-login": {
+        "name": "EUSuite Login",
+        "description": "Authentication & Login Portal",
+        "image": "dylan016504/eusuite-login:latest",
+        "port": 3000,
+        "env": {}
+    },
+    "eusuite-dashboard": {
+        "name": "EUSuite Dashboard",
+        "description": "Main Dashboard & App Launcher",
+        "image": "dylan016504/eusuite-dashboard:latest",
+        "port": 3001,
+        "env": {}
+    },
+    "eumail-frontend": {
+        "name": "EUMail",
+        "description": "Email Service (Frontend)",
+        "image": "dylan016504/eumail-frontend:latest",
+        "port": 3002,
+        "env": {}
+    },
+    "eumail-backend": {
+        "name": "EUMail API",
+        "description": "Email Service (Backend)",
+        "image": "dylan016504/eumail-backend:latest",
+        "port": 4002,
+        "env": {}
+    },
+    "eucloud-frontend": {
+        "name": "EUCloud",
+        "description": "Cloud Storage (Frontend)",
+        "image": "dylan016504/eucloud-frontend:latest",
+        "port": 3003,
+        "env": {}
+    },
+    "eucloud-backend": {
+        "name": "EUCloud API",
+        "description": "Cloud Storage (Backend)",
+        "image": "dylan016504/eucloud-backend:latest",
+        "port": 4003,
+        "env": {}
+    },
+    "eutype-frontend": {
+        "name": "EUType",
+        "description": "Document Editor (Frontend)",
+        "image": "dylan016504/eutype-frontend:latest",
+        "port": 3004,
+        "env": {}
+    },
+    "eugroups-frontend": {
+        "name": "EUGroups",
+        "description": "Team Communication (Frontend)",
+        "image": "dylan016504/eugroups-frontend:latest",
+        "port": 3005,
+        "env": {}
+    },
+    "eugroups-backend": {
+        "name": "EUGroups API",
+        "description": "Team Communication (Backend)",
+        "image": "dylan016504/eugroups-backend:latest",
+        "port": 4005,
+        "env": {}
+    },
+    "eugroups-media": {
+        "name": "EUGroups Media",
+        "description": "Media Server for Teams",
+        "image": "dylan016504/eugroups-media-server:latest",
+        "port": 4006,
+        "env": {}
+    },
+    "euadmin-frontend": {
+        "name": "EUAdmin",
+        "description": "Admin Portal (Frontend)",
+        "image": "dylan016504/euadmin-frontend:latest",
+        "port": 3006,
+        "env": {}
+    },
+    "euadmin-backend": {
+        "name": "EUAdmin API",
+        "description": "Admin Portal (Backend)",
+        "image": "dylan016504/euadmin-backend:latest",
+        "port": 4007,
+        "env": {}
+    }
+}
+
 class PodInfo(BaseModel):
     name: str
     status: str
@@ -2332,3 +2420,186 @@ def delete_admin_user(user_id: int, admin: User = Depends(require_admin), db: Se
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")
+
+# =====================================================================
+# EUSUITE DEPLOYMENT - Dylan's Office 365 Suite (1-Click Deploy)
+# =====================================================================
+
+@app.get("/eusuite/apps")
+def get_eusuite_apps(current_user: User = Depends(get_current_user)):
+    """Get list of available EUSUITE apps"""
+    return {
+        "suite_name": "EUSUITE - European Office Suite",
+        "description": "A complete Office 365 alternative by Dylan0165",
+        "github": "https://github.com/Dylan0165/EUSUITE",
+        "apps": [
+            {
+                "id": app_id,
+                "name": app_info["name"],
+                "description": app_info["description"],
+                "image": app_info["image"],
+                "port": app_info["port"]
+            }
+            for app_id, app_info in EUSUITE_APPS.items()
+        ]
+    }
+
+@app.post("/eusuite/deploy")
+def deploy_eusuite(current_user: User = Depends(get_current_user)):
+    """Deploy the entire EUSUITE stack with one click"""
+    ns_name = get_namespace_name(current_user.company_name)
+    deployed_apps = []
+    failed_apps = []
+    
+    print(f"[EUSUITE] Starting deployment for {current_user.company_name} in namespace {ns_name}")
+    
+    # Ensure namespace exists and has regcred
+    try:
+        v1.read_namespace(name=ns_name)
+    except client.exceptions.ApiException:
+        ns_body = client.V1Namespace(metadata=client.V1ObjectMeta(name=ns_name))
+        v1.create_namespace(body=ns_body)
+    
+    ensure_regcred_in_namespace(ns_name)
+    
+    # Generate a unique group ID for this EUSUITE deployment
+    group_id = f"eusuite-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    
+    for app_id, app_info in EUSUITE_APPS.items():
+        try:
+            deployment_name = f"eusuite-{app_id}-{current_user.company_name.lower().replace(' ', '-')[:10]}"
+            
+            print(f"[EUSUITE] Deploying {app_info['name']} as {deployment_name}")
+            
+            # Create Deployment
+            container = client.V1Container(
+                name=app_id,
+                image=app_info["image"],
+                ports=[client.V1ContainerPort(container_port=app_info["port"])],
+                resources=client.V1ResourceRequirements(
+                    requests={"memory": "128Mi", "cpu": "100m"},
+                    limits={"memory": "512Mi", "cpu": "500m"}
+                ),
+                env=[client.V1EnvVar(name=k, value=v) for k, v in app_info.get("env", {}).items()]
+            )
+            
+            deployment = client.V1Deployment(
+                metadata=client.V1ObjectMeta(
+                    name=deployment_name,
+                    labels={
+                        "app": deployment_name,
+                        "eusuite-app": app_id,
+                        "eusuite-group": group_id,
+                        "company": current_user.company_name.lower().replace(' ', '-')
+                    }
+                ),
+                spec=client.V1DeploymentSpec(
+                    replicas=1,
+                    selector=client.V1LabelSelector(match_labels={"app": deployment_name}),
+                    template=client.V1PodTemplateSpec(
+                        metadata=client.V1ObjectMeta(labels={
+                            "app": deployment_name,
+                            "eusuite-app": app_id,
+                            "eusuite-group": group_id,
+                            "type": "eusuite"
+                        }),
+                        spec=client.V1PodSpec(
+                            containers=[container],
+                            image_pull_secrets=[client.V1LocalObjectReference(name="regcred")]
+                        )
+                    )
+                )
+            )
+            
+            try:
+                apps_v1.create_namespaced_deployment(namespace=ns_name, body=deployment)
+            except client.exceptions.ApiException as e:
+                if e.status == 409:  # Already exists
+                    apps_v1.replace_namespaced_deployment(name=deployment_name, namespace=ns_name, body=deployment)
+                else:
+                    raise
+            
+            # Create Service with NodePort
+            service = client.V1Service(
+                metadata=client.V1ObjectMeta(
+                    name=f"{deployment_name}-svc",
+                    labels={"eusuite-app": app_id, "eusuite-group": group_id}
+                ),
+                spec=client.V1ServiceSpec(
+                    type="NodePort",
+                    selector={"app": deployment_name},
+                    ports=[client.V1ServicePort(port=app_info["port"], target_port=app_info["port"])]
+                )
+            )
+            
+            try:
+                created_svc = v1.create_namespaced_service(namespace=ns_name, body=service)
+                node_port = created_svc.spec.ports[0].node_port
+            except client.exceptions.ApiException as e:
+                if e.status == 409:  # Already exists
+                    existing_svc = v1.read_namespaced_service(name=f"{deployment_name}-svc", namespace=ns_name)
+                    node_port = existing_svc.spec.ports[0].node_port
+                else:
+                    raise
+            
+            deployed_apps.append({
+                "id": app_id,
+                "name": app_info["name"],
+                "description": app_info["description"],
+                "deployment": deployment_name,
+                "node_port": node_port,
+                "url": f"http://192.168.154.114:{node_port}"
+            })
+            
+            print(f"[EUSUITE] ✓ {app_info['name']} deployed on port {node_port}")
+            
+        except Exception as e:
+            print(f"[EUSUITE] ✗ Failed to deploy {app_info['name']}: {str(e)}")
+            failed_apps.append({
+                "id": app_id,
+                "name": app_info["name"],
+                "error": str(e)
+            })
+    
+    return {
+        "success": len(failed_apps) == 0,
+        "message": f"EUSUITE deployment complete: {len(deployed_apps)} apps deployed, {len(failed_apps)} failed",
+        "group_id": group_id,
+        "deployed": deployed_apps,
+        "failed": failed_apps
+    }
+
+@app.delete("/eusuite/undeploy")
+def undeploy_eusuite(current_user: User = Depends(get_current_user)):
+    """Remove all EUSUITE apps from the user's namespace"""
+    ns_name = get_namespace_name(current_user.company_name)
+    deleted = []
+    
+    try:
+        # Find all EUSUITE deployments
+        deployments = apps_v1.list_namespaced_deployment(
+            namespace=ns_name,
+            label_selector="type=eusuite"
+        )
+        
+        for dep in deployments.items:
+            dep_name = dep.metadata.name
+            
+            # Delete deployment
+            apps_v1.delete_namespaced_deployment(name=dep_name, namespace=ns_name)
+            
+            # Delete service
+            try:
+                v1.delete_namespaced_service(name=f"{dep_name}-svc", namespace=ns_name)
+            except:
+                pass
+            
+            deleted.append(dep_name)
+        
+        return {
+            "success": True,
+            "message": f"EUSUITE undeployed: {len(deleted)} apps removed",
+            "deleted": deleted
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error undeploying EUSUITE: {str(e)}")
