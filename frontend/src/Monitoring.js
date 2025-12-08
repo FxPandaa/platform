@@ -22,7 +22,14 @@ import {
   TableRow,
   Paper,
   Tooltip,
-  Fade
+  Fade,
+  Drawer,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
@@ -38,7 +45,9 @@ import {
   Schedule as ScheduleIcon,
   Euro as EuroIcon,
   Dns as DnsIcon,
-  Layers as LayersIcon
+  Layers as LayersIcon,
+  Menu as MenuIcon,
+  Timeline as TimelineIcon,
 } from '@mui/icons-material';
 import {
   AreaChart,
@@ -56,17 +65,18 @@ import {
   Legend
 } from 'recharts';
 import axios from 'axios';
+import { COLORS as THEME_COLORS, STATUS_COLORS as THEME_STATUS_COLORS } from './theme';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://192.168.154.114:30001";
 
-// Color palette
+// Color palette - use theme colors for consistency
 const COLORS = {
-  primary: '#6366f1',
-  success: '#22c55e',
-  warning: '#f59e0b',
-  error: '#ef4444',
-  info: '#3b82f6',
-  purple: '#a855f7',
+  primary: THEME_COLORS.primary,
+  success: THEME_COLORS.success,
+  warning: THEME_COLORS.warning,
+  error: THEME_COLORS.error,
+  info: THEME_COLORS.info,
+  purple: THEME_COLORS.secondary,
   cyan: '#06b6d4',
   pink: '#ec4899'
 };
@@ -92,8 +102,11 @@ function Monitoring() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [historicalData, setHistoricalData] = useState([]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const company = localStorage.getItem('company');
 
   const fetchMonitoringData = useCallback(async (showRefresh = false) => {
@@ -120,7 +133,7 @@ function Monitoring() {
       });
       
     } catch (error) {
-      console.error('Error fetching monitoring data:', error);
+      // Handle auth errors silently
       if (error.response?.status === 401) {
         navigate('/');
       }
@@ -193,64 +206,195 @@ function Monitoring() {
     memory: pod.memory_mi
   }));
 
+  // Sidebar content
+  const sidebarContent = (
+    <Box
+      sx={{
+        width: 260,
+        height: '100%',
+        background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
+        borderRight: '1px solid rgba(99, 102, 241, 0.2)',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      {/* Logo */}
+      <Box sx={{ p: 3, borderBottom: '1px solid rgba(99, 102, 241, 0.2)' }}>
+        <Typography
+          variant="h5"
+          sx={{
+            fontWeight: 700,
+            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+          }}
+        >
+          Shield-SaaS
+        </Typography>
+        <Typography variant="caption" sx={{ color: '#64748b' }}>
+          Kubernetes Platform
+        </Typography>
+      </Box>
+
+      {/* Navigation */}
+      <Box sx={{ flex: 1, py: 2 }}>
+        <List>
+          <ListItem
+            button
+            onClick={() => navigate('/dashboard')}
+            sx={{
+              mx: 1,
+              borderRadius: 2,
+              '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.1)' },
+            }}
+          >
+            <ListItemIcon>
+              <DashboardIcon sx={{ color: '#94a3b8' }} />
+            </ListItemIcon>
+            <ListItemText 
+              primary="Dashboard" 
+              primaryTypographyProps={{ color: '#94a3b8' }}
+            />
+          </ListItem>
+          <ListItem
+            button
+            selected
+            sx={{
+              mx: 1,
+              borderRadius: 2,
+              '&.Mui-selected': {
+                bgcolor: 'rgba(99, 102, 241, 0.15)',
+                '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.2)' },
+              },
+            }}
+          >
+            <ListItemIcon>
+              <TimelineIcon sx={{ color: '#6366f1' }} />
+            </ListItemIcon>
+            <ListItemText 
+              primary="Monitoring" 
+              primaryTypographyProps={{ color: '#f1f5f9', fontWeight: 500 }}
+            />
+          </ListItem>
+        </List>
+      </Box>
+
+      {/* User Info */}
+      <Box sx={{ p: 2, borderTop: '1px solid rgba(99, 102, 241, 0.2)' }}>
+        <Paper
+          sx={{
+            p: 2,
+            bgcolor: 'rgba(15, 23, 42, 0.5)',
+            borderRadius: 2,
+          }}
+        >
+          <Typography variant="body2" sx={{ color: '#e2e8f0', fontWeight: 500 }}>
+            {company || 'Company'}
+          </Typography>
+          <Typography variant="caption" sx={{ color: '#64748b' }}>
+            Active Workspace
+          </Typography>
+        </Paper>
+        <Button
+          fullWidth
+          variant="outlined"
+          startIcon={<LogoutIcon />}
+          onClick={handleLogout}
+          sx={{
+            mt: 2,
+            borderColor: 'rgba(239, 68, 68, 0.3)',
+            color: '#ef4444',
+            '&:hover': {
+              borderColor: '#ef4444',
+              bgcolor: 'rgba(239, 68, 68, 0.1)',
+            },
+          }}
+        >
+          Logout
+        </Button>
+      </Box>
+    </Box>
+  );
+
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-      {/* Header */}
-      <AppBar position="static" elevation={0} sx={{ bgcolor: 'transparent', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-        <Toolbar>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{ 
-              width: 40, 
-              height: 40, 
-              borderRadius: 2, 
-              background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <TrendingUpIcon sx={{ color: 'white' }} />
-            </Box>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: 'white' }}>
-                Monitoring
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {company}
-              </Typography>
-            </Box>
-          </Box>
-          
-          <Box sx={{ flexGrow: 1 }} />
-          
-          <Tooltip title="Back to Dashboard">
-            <Button 
-              color="inherit" 
-              startIcon={<DashboardIcon />}
-              onClick={() => navigate('/dashboard')}
-              sx={{ mr: 1 }}
-            >
-              Dashboard
-            </Button>
-          </Tooltip>
-          
-          <Tooltip title="Refresh">
-            <IconButton color="inherit" onClick={() => fetchMonitoringData(true)} disabled={refreshing}>
-              <RefreshIcon sx={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
-            </IconButton>
-          </Tooltip>
-          
-          <Tooltip title="Logout">
-            <IconButton color="inherit" onClick={handleLogout}>
-              <LogoutIcon />
-            </IconButton>
-          </Tooltip>
-        </Toolbar>
-      </AppBar>
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#0f172a' }}>
+      {/* Sidebar - Desktop */}
+      {!isMobile && (
+        <Box component="nav" sx={{ flexShrink: 0 }}>
+          {sidebarContent}
+        </Box>
+      )}
 
-      {/* Refresh indicator */}
-      {refreshing && <LinearProgress sx={{ height: 2 }} />}
+      {/* Sidebar - Mobile Drawer */}
+      {isMobile && (
+        <Drawer
+          variant="temporary"
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          ModalProps={{ keepMounted: true }}
+          PaperProps={{ sx: { bgcolor: 'transparent', boxShadow: 'none' } }}
+        >
+          {sidebarContent}
+        </Drawer>
+      )}
 
-      <Container maxWidth="xl" sx={{ py: 4 }}>
+      {/* Main Content */}
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Top Bar */}
+        <AppBar
+          position="static"
+          elevation={0}
+          sx={{
+            bgcolor: 'transparent',
+            borderBottom: '1px solid rgba(99, 102, 241, 0.2)',
+          }}
+        >
+          <Toolbar>
+            {isMobile && (
+              <IconButton
+                edge="start"
+                onClick={() => setDrawerOpen(true)}
+                sx={{ mr: 2, color: '#94a3b8' }}
+              >
+                <MenuIcon />
+              </IconButton>
+            )}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
+              <Box sx={{ 
+                width: 40, 
+                height: 40, 
+                borderRadius: 2, 
+                background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <TrendingUpIcon sx={{ color: 'white' }} />
+              </Box>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: 'white' }}>
+                  Monitoring
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {company}
+                </Typography>
+              </Box>
+            </Box>
+            
+            <Tooltip title="Refresh">
+              <IconButton color="inherit" onClick={() => fetchMonitoringData(true)} disabled={refreshing}>
+                <RefreshIcon sx={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
+              </IconButton>
+            </Tooltip>
+          </Toolbar>
+        </AppBar>
+
+        {/* Refresh indicator */}
+        {refreshing && <LinearProgress sx={{ height: 2 }} />}
+
+        {/* Content */}
+        <Box sx={{ flex: 1, overflow: 'auto' }}>
+          <Container maxWidth="xl" sx={{ py: 4 }}>
         {/* Summary Cards */}
         <Fade in timeout={500}>
           <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -830,6 +974,8 @@ function Monitoring() {
           </Typography>
         </Box>
       </Container>
+      </Box>
+      </Box>
 
       {/* CSS for spinner animation */}
       <style>{`

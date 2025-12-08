@@ -1,2055 +1,1452 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import {
-  AppBar,
-  Toolbar,
+  Box,
   Typography,
-  Button,
-  Container,
+  Paper,
   Grid,
-  Card,
-  CardContent,
-  CardActions,
+  Button,
+  TextField,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
+  IconButton,
+  Chip,
+  LinearProgress,
+  Alert,
+  Snackbar,
+  Card,
+  CardContent,
+  CardActions,
+  Tooltip,
+  CircularProgress,
+  Tabs,
+  Tab,
+  Divider,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Slider,
+  Switch,
+  FormControlLabel,
   Select,
   MenuItem,
   FormControl,
   InputLabel,
-  Chip,
-  Box,
-  IconButton,
-  TextField,
-  Alert,
-  Tabs,
-  Tab,
-  LinearProgress,
-  CircularProgress,
-  List,
-  ListItem,
-  ListItemText,
-  Divider,
-  Slider,
-  Switch,
-  FormControlLabel,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Snackbar,
   Fade,
-  Tooltip,
-  Avatar
+  Collapse,
+  useTheme,
+  useMediaQuery,
+  Drawer,
+  AppBar,
+  Toolbar,
+  Badge,
 } from '@mui/material';
-import { 
-  Add as AddIcon, 
-  Delete as DeleteIcon, 
-  Refresh as RefreshIcon, 
-  Logout as LogoutIcon, 
-  CheckCircle as CheckCircleIcon, 
-  Memory as MemoryIcon, 
+import {
+  Add as AddIcon,
+  Delete as DeleteIcon,
+  Refresh as RefreshIcon,
+  PlayArrow as StartIcon,
+  Stop as StopIcon,
+  Terminal as TerminalIcon,
+  Memory as MemoryIcon,
+  Speed as SpeedIcon,
   Settings as SettingsIcon,
   Storage as StorageIcon,
-  Speed as SpeedIcon,
   Backup as BackupIcon,
-  Restore as RestoreIcon,
-  Schedule as ScheduleIcon,
+  RestartAlt as RestartIcon,
+  Scale as ScaleIcon,
+  Visibility as VisibilityIcon,
   Close as CloseIcon,
-  Article as ArticleIcon,
-  OpenInNew as OpenInNewIcon,
-  CloudDone as CloudDoneIcon,
-  Business as BusinessIcon,
-  DeleteForever as DeleteForeverIcon,
-  TrendingUp as TrendingUpIcon,
-  RocketLaunch as RocketLaunchIcon,
-  Apps as AppsIcon
+  CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon,
+  Warning as WarningIcon,
+  Pending as PendingIcon,
+  CloudUpload as CloudUploadIcon,
+  CloudDownload as CloudDownloadIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
+  Menu as MenuIcon,
+  Dashboard as DashboardIcon,
+  Logout as LogoutIcon,
+  Apps as AppsIcon,
+  Timeline as TimelineIcon,
+  Notifications as NotificationsIcon,
 } from '@mui/icons-material';
-import axios from 'axios';
+import { COLORS, STATUS_COLORS, ANIMATION_DURATION } from './theme';
+import { usePolling, useNotification, usePodActions } from './hooks';
+import StatusBadge from './components/common/StatusBadge';
+import ResourceBar from './components/common/ResourceBar';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://192.168.154.114:30001";
+const API_BASE = 'http://192.168.154.114:30001';
 
-function Dashboard() {
-  const [pods, setPods] = useState([]);
-  const [open, setOpen] = useState(false);
-  const [serviceType, setServiceType] = useState('nginx');
-  const [customImage, setCustomImage] = useState('');
-  const [logsOpen, setLogsOpen] = useState(false);
-  const [currentLogs, setCurrentLogs] = useState('');
-  const [logPodName, setLogPodName] = useState('');
-  const [tabValue, setTabValue] = useState(0);
-  
-  // Metrics state
-  const [metricsOpen, setMetricsOpen] = useState(false);
-  const [currentMetrics, setCurrentMetrics] = useState(null);
-  const [metricsPodName, setMetricsPodName] = useState('');
-  const [metricsLoading, setMetricsLoading] = useState(false);
-  
-  // Environment Variables state
-  const [envOpen, setEnvOpen] = useState(false);
-  const [currentEnvVars, setCurrentEnvVars] = useState({});
-  const [envPodName, setEnvPodName] = useState('');
-  const [envLoading, setEnvLoading] = useState(false);
-  const [newEnvKey, setNewEnvKey] = useState('');
-  const [newEnvValue, setNewEnvValue] = useState('');
-  const [envDeploymentName, setEnvDeploymentName] = useState('');
-  
-  // Storage state
-  const [storageOpen, setStorageOpen] = useState(false);
-  const [storageDeployment, setStorageDeployment] = useState('');
-  const [storageLoading, setStorageLoading] = useState(false);
-  const [storageQuota, setStorageQuota] = useState(null);
-  const [storageSize, setStorageSize] = useState(1);
-  const [storageMountPath, setStorageMountPath] = useState('/data');
-  const [currentStorage, setCurrentStorage] = useState(null);
-  
-  // Scaling state
-  const [scalingOpen, setScalingOpen] = useState(false);
-  const [scalingDeployment, setScalingDeployment] = useState('');
-  const [scalingLoading, setScalingLoading] = useState(false);
-  const [scalingConfig, setScalingConfig] = useState(null);
-  const [minReplicas, setMinReplicas] = useState(1);
-  const [maxReplicas, setMaxReplicas] = useState(5);
-  const [cpuThreshold, setCpuThreshold] = useState(80);
-  
-  // Backup state
-  const [backupOpen, setBackupOpen] = useState(false);
-  const [backupDeployment, setBackupDeployment] = useState('');
-  const [backupLoading, setBackupLoading] = useState(false);
-  const [backups, setBackups] = useState([]);
-  const [autoBackupEnabled, setAutoBackupEnabled] = useState(false);
-  const [backupHour, setBackupHour] = useState(2);
-  
-  // Snackbar state for professional notifications
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: '',
-    severity: 'success', // 'success', 'error', 'warning', 'info'
-    title: ''
-  });
-
-  // EUSUITE state
-  const [eusuiteOpen, setEusuiteOpen] = useState(false);
-  const [eusuiteDeploying, setEusuiteDeploying] = useState(false);
-  const [eusuiteResult, setEusuiteResult] = useState(null);
-  const [eusuiteDetailOpen, setEusuiteDetailOpen] = useState(false);
-
-  const showNotification = (title, message, severity = 'success') => {
-    setSnackbar({ open: true, message, severity, title });
-  };
-
-  const closeNotification = () => {
-    setSnackbar({ ...snackbar, open: false });
-  };
-  
-  const navigate = useNavigate();
-  const company = localStorage.getItem('company');
-
-  const fetchPods = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`${BACKEND_URL}/pods`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      console.log("Received pods from backend:", response.data);
-      console.log("Total pods received:", response.data.length);
-      setPods(response.data);
-    } catch (error) {
-      console.error("Error fetching pods:", error);
-      if (error.response && error.response.status === 401) {
-        handleLogout();
-      }
-    }
-  };
-
-  useEffect(() => {
-    fetchPods();
-    const interval = setInterval(fetchPods, 5000); // Auto refresh
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('company');
-    navigate('/');
-  };
-
-  const handleCreate = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      console.log("Sending pod create request:", { service_type: serviceType, custom_image: customImage });
-      
-      await axios.post(`${BACKEND_URL}/pods`, 
-        { 
-          service_type: serviceType,
-          custom_image: serviceType === 'custom' ? customImage : null
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setOpen(false);
-      fetchPods();
-    } catch (error) {
-      console.error("Create Pod Error:", error);
-      let errorMsg = "Unknown error";
-      
-      if (error.response) {
-        // Server reageerde met een status code buiten de 2xx range
-        if (error.response.data && error.response.data.detail) {
-           const detail = error.response.data.detail;
-           // Als detail een object/array is (zoals bij validatie errors), maak er string van
-           errorMsg = typeof detail === 'object' ? JSON.stringify(detail, null, 2) : detail;
-        } else {
-           errorMsg = `Status: ${error.response.status} - ${error.response.statusText}`;
-        }
-      } else if (error.request) {
-        // Request is verstuurd maar geen response ontvangen
-        errorMsg = "No response from server. Check if backend is running.";
-      } else {
-        // Iets anders ging mis
-        errorMsg = error.message;
-      }
-      
-      showNotification('Pod Creation Failed', errorMsg, 'error');
-    }
-  };
-
-  const handleDeleteCompany = async () => {
-    if (!window.confirm("ARE YOU SURE? This will delete your company, all services, and your account permanently!")) return;
-    
-    try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`${BACKEND_URL}/company`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      handleLogout();
-    } catch (error) {
-      showNotification('Delete Failed', error.response?.data?.detail || error.message, 'error');
-    }
-  };
-
-  const handleDelete = async (podName) => {
-    if (!window.confirm(`Are you sure you want to delete ${podName}?`)) return;
-    try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`${BACKEND_URL}/pods/${podName}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      fetchPods();
-      showNotification('Pod Deleted', `${podName} has been deleted successfully`, 'success');
-    } catch (error) {
-      showNotification('Delete Failed', 'Failed to delete pod', 'error');
-    }
-  };
-
-  const handleViewLogs = async (podName) => {
-    const pod = pods.find(p => p.name === podName);
-    if (pod && pod.status !== 'Running' && pod.status !== 'Succeeded') {
-        showNotification('Cannot Fetch Logs', `Pod status is ${pod.status}. ${pod.message || 'Container is not running.'}`, 'warning');
-        return;
-    }
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`${BACKEND_URL}/pods/${podName}/logs`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setCurrentLogs(response.data.logs);
-      setLogPodName(podName);
-      setLogsOpen(true);
-    } catch (error) {
-      console.error(error);
-      showNotification('Logs Error', 'Failed to fetch logs. The container might be starting or crashed.', 'warning');
-    }
-  };
-
-  // ==================== METRICS HANDLERS ====================
-  const handleViewMetrics = async (podName) => {
-    setMetricsPodName(podName);
-    setMetricsLoading(true);
-    setMetricsOpen(true);
-    setCurrentMetrics(null);
-    
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setCurrentMetrics({ error: "Not logged in" });
-      setMetricsLoading(false);
-      return;
-    }
-    
-    // First test if backend is reachable at all
-    try {
-      await axios.get(`${BACKEND_URL}/health`, { timeout: 5000 });
-    } catch (healthError) {
-      console.error("Backend health check failed:", healthError);
-      setCurrentMetrics({ error: "Backend is not reachable. Please check if the service is running." });
-      setMetricsLoading(false);
-      return;
-    }
-    
-    try {
-      console.log(`Fetching metrics for: ${podName}`);
-      const response = await axios.get(`${BACKEND_URL}/pods/${podName}/metrics`, {
-        headers: { Authorization: `Bearer ${token}` },
-        timeout: 15000
-      });
-      console.log("Metrics response:", response.data);
-      setCurrentMetrics(response.data);
-    } catch (error) {
-      console.error("Error fetching metrics:", error);
-      console.error("Status:", error.response?.status);
-      console.error("Data:", error.response?.data);
-      
-      let errorMsg = "Failed to fetch metrics";
-      if (error.response?.status === 404) {
-        errorMsg = "Metrics endpoint not found. Backend may need to be updated.";
-      } else if (error.response?.status === 401) {
-        errorMsg = "Session expired. Please login again.";
-      } else if (error.response?.data?.detail) {
-        errorMsg = error.response.data.detail;
-      } else if (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED') {
-        errorMsg = "Cannot connect to metrics endpoint.";
-      } else if (error.message) {
-        errorMsg = error.message;
-      }
-      setCurrentMetrics({ error: errorMsg });
-    } finally {
-      setMetricsLoading(false);
-    }
-  };
-
-  // Auto-refresh metrics when dialog is open
-  useEffect(() => {
-    if (metricsOpen && metricsPodName) {
-      const interval = setInterval(async () => {
-        try {
-          const token = localStorage.getItem('token');
-          const response = await axios.get(`${BACKEND_URL}/pods/${metricsPodName}/metrics`, {
-            headers: { Authorization: `Bearer ${token}` },
-            timeout: 10000
-          });
-          setCurrentMetrics(response.data);
-        } catch (error) {
-          console.error("Error refreshing metrics:", error);
-          // Don't update state on refresh error - keep last known good value
-        }
-      }, 5000);  // Refresh every 5 seconds
-      return () => clearInterval(interval);
-    }
-  }, [metricsOpen, metricsPodName]);
-
-  // ==================== ENVIRONMENT VARIABLES HANDLERS ====================
-  const handleViewEnv = async (podName) => {
-    setEnvPodName(podName);
-    setEnvLoading(true);
-    setEnvOpen(true);
-    setCurrentEnvVars({});
-    setNewEnvKey('');
-    setNewEnvValue('');
-    
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`${BACKEND_URL}/pods/${podName}/env`, {
-        headers: { Authorization: `Bearer ${token}` },
-        timeout: 10000
-      });
-      setCurrentEnvVars(response.data.env_vars || {});
-      setEnvDeploymentName(response.data.deployment_name || podName);
-    } catch (error) {
-      console.error("Error fetching env vars:", error);
-      showNotification('Error', 'Failed to fetch environment variables', 'error');
-      setEnvOpen(false);
-    } finally {
-      setEnvLoading(false);
-    }
-  };
-
-  const handleAddEnvVar = () => {
-    if (newEnvKey && newEnvKey.trim()) {
-      setCurrentEnvVars(prev => ({
-        ...prev,
-        [newEnvKey.trim()]: newEnvValue
-      }));
-      setNewEnvKey('');
-      setNewEnvValue('');
-    }
-  };
-
-  const handleRemoveEnvVar = (key) => {
-    setCurrentEnvVars(prev => {
-      const updated = { ...prev };
-      delete updated[key];
-      return updated;
-    });
-  };
-
-  const handleSaveEnvVars = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      await axios.put(`${BACKEND_URL}/pods/${envPodName}/env`, 
-        { env_vars: currentEnvVars },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      showNotification('Environment Updated', 'Environment variables updated. The pod will restart with new values.', 'success');
-      setEnvOpen(false);
-      fetchPods();
-    } catch (error) {
-      console.error("Error saving env vars:", error);
-      showNotification('Save Failed', error.response?.data?.detail || error.message, 'error');
-    }
-  };
-
-  // ==================== STORAGE HANDLERS ====================
-  const handleViewStorage = async (podName) => {
-    setStorageDeployment(podName);
-    setStorageLoading(true);
-    setStorageOpen(true);
-    setCurrentStorage(null);
-    setStorageSize(1);
-    setStorageMountPath('/data');
-    
-    const token = localStorage.getItem('token');
-    try {
-      // Fetch quota and current storage in parallel
-      const [quotaRes, storageRes] = await Promise.all([
-        axios.get(`${BACKEND_URL}/storage/quota`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get(`${BACKEND_URL}/pods/${podName}/storage`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }).catch(() => ({ data: null }))
-      ]);
-      setStorageQuota(quotaRes.data);
-      setCurrentStorage(storageRes.data);
-    } catch (error) {
-      console.error("Error fetching storage info:", error);
-    } finally {
-      setStorageLoading(false);
-    }
-  };
-
-  const handleAddStorage = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      await axios.post(`${BACKEND_URL}/pods/${storageDeployment}/storage`, {
-        size: `${storageSize}Gi`,
-        mount_path: storageMountPath
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      showNotification('Storage Added', `${storageSize}Gi storage added successfully! Pod will restart.`, 'success');
-      setStorageOpen(false);
-      fetchPods();
-    } catch (error) {
-      console.error("Error adding storage:", error);
-      showNotification('Storage Error', error.response?.data?.detail || error.message, 'error');
-    }
-  };
-
-  const handleDeleteStorage = async () => {
-    if (!window.confirm("Are you sure you want to remove storage? All data will be permanently deleted!")) return;
-    try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`${BACKEND_URL}/pods/${storageDeployment}/storage`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      showNotification('Storage Removed', 'Persistent storage has been removed. Pod will restart.', 'success');
-      setStorageOpen(false);
-      fetchPods();
-    } catch (error) {
-      console.error("Error removing storage:", error);
-      showNotification('Storage Error', error.response?.data?.detail || error.message, 'error');
-    }
-  };
-
-  // ==================== SCALING HANDLERS ====================
-  const handleViewScaling = async (podName) => {
-    setScalingDeployment(podName);
-    setScalingLoading(true);
-    setScalingOpen(true);
-    setScalingConfig(null);
-    setMinReplicas(1);
-    setMaxReplicas(5);
-    setCpuThreshold(80);
-    
-    const token = localStorage.getItem('token');
-    try {
-      const response = await axios.get(`${BACKEND_URL}/pods/${podName}/scaling`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (response.data.enabled) {
-        setScalingConfig(response.data);
-        setMinReplicas(response.data.min_replicas);
-        setMaxReplicas(response.data.max_replicas);
-        setCpuThreshold(response.data.cpu_target);
-      }
-    } catch (error) {
-      console.error("Error fetching scaling config:", error);
-    } finally {
-      setScalingLoading(false);
-    }
-  };
-
-  const handleSaveScaling = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      await axios.post(`${BACKEND_URL}/pods/${scalingDeployment}/scaling`, {
-        min_replicas: minReplicas,
-        max_replicas: maxReplicas,
-        cpu_target_percent: cpuThreshold
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      showNotification('Scaling Configured', 'Auto-scaling has been configured successfully!', 'success');
-      setScalingOpen(false);
-    } catch (error) {
-      console.error("Error configuring scaling:", error);
-      showNotification('Scaling Error', error.response?.data?.detail || error.message, 'error');
-    }
-  };
-
-  const handleDisableScaling = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`${BACKEND_URL}/pods/${scalingDeployment}/scaling`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      showNotification('Scaling Disabled', 'Auto-scaling has been disabled', 'info');
-      setScalingConfig(null);
-    } catch (error) {
-      console.error("Error disabling scaling:", error);
-      showNotification('Scaling Error', error.response?.data?.detail || error.message, 'error');
-    }
-  };
-
-  // ==================== BACKUP HANDLERS ====================
-  const handleViewBackups = async (podName) => {
-    setBackupDeployment(podName);
-    setBackupLoading(true);
-    setBackupOpen(true);
-    setBackups([]);
-    setAutoBackupEnabled(false);
-    
-    const token = localStorage.getItem('token');
-    try {
-      const [backupsRes, autoBackupRes] = await Promise.all([
-        axios.get(`${BACKEND_URL}/pods/${podName}/backups`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get(`${BACKEND_URL}/pods/${podName}/auto-backup`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }).catch(() => ({ data: { enabled: false } }))
-      ]);
-      setBackups(backupsRes.data.backups || []);
-      setAutoBackupEnabled(autoBackupRes.data.enabled || false);
-      if (autoBackupRes.data.hour) {
-        setBackupHour(autoBackupRes.data.hour);
-      }
-    } catch (error) {
-      console.error("Error fetching backups:", error);
-    } finally {
-      setBackupLoading(false);
-    }
-  };
-
-  const handleCreateBackup = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      await axios.post(`${BACKEND_URL}/pods/${backupDeployment}/backup`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      showNotification('Backup Created', 'Backup has been created successfully!', 'success');
-      handleViewBackups(backupDeployment);
-    } catch (error) {
-      console.error("Error creating backup:", error);
-      showNotification('Backup Failed', error.response?.data?.detail || error.message, 'error');
-    }
-  };
-
-  const handleRestoreBackup = async (backupName) => {
-    if (!window.confirm(`Are you sure you want to restore from "${backupName}"? This will overwrite current data.`)) return;
-    try {
-      const token = localStorage.getItem('token');
-      await axios.post(`${BACKEND_URL}/pods/${backupDeployment}/restore/${backupName}`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      showNotification('Restore Started', 'Restore initiated! Pod will restart with restored data.', 'success');
-      setBackupOpen(false);
-      fetchPods();
-    } catch (error) {
-      console.error("Error restoring backup:", error);
-      showNotification('Restore Failed', error.response?.data?.detail || error.message, 'error');
-    }
-  };
-
-  const handleToggleAutoBackup = async () => {
-    const token = localStorage.getItem('token');
-    try {
-      if (autoBackupEnabled) {
-        await axios.delete(`${BACKEND_URL}/pods/${backupDeployment}/auto-backup`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setAutoBackupEnabled(false);
-        showNotification('Auto-Backup Disabled', 'Automatic backups have been disabled', 'info');
-      } else {
-        await axios.post(`${BACKEND_URL}/pods/${backupDeployment}/auto-backup`, {
-          hour: backupHour
-        }, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setAutoBackupEnabled(true);
-        showNotification('Auto-Backup Enabled', `Daily backups scheduled at ${backupHour}:00 UTC`, 'success');
-      }
-    } catch (error) {
-      console.error("Error toggling auto-backup:", error);
-      showNotification('Auto-Backup Error', error.response?.data?.detail || error.message, 'error');
-    }
-  };
-
-  const calculateTotalCost = () => {
-    return pods.reduce((total, pod) => total + (pod.cost || 0), 0).toFixed(2);
-  };
-
-  // EUSUITE Deploy Handler
-  const handleDeployEusuite = async () => {
-    setEusuiteDeploying(true);
-    setEusuiteResult(null);
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.post(`${BACKEND_URL}/eusuite/deploy`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setEusuiteResult(response.data);
-      if (response.data.success) {
-        showNotification('EUSUITE Deployed!', `${response.data.deployed.length} apps successfully deployed`, 'success');
-      } else {
-        showNotification('EUSUITE Partial Deploy', `${response.data.deployed.length} deployed, ${response.data.failed.length} failed`, 'warning');
-      }
-      fetchPods();
-    } catch (error) {
-      console.error("EUSUITE deploy error:", error);
-      showNotification('EUSUITE Error', error.response?.data?.detail || 'Failed to deploy EUSUITE', 'error');
-    } finally {
-      setEusuiteDeploying(false);
-    }
-  };
-
-  const handleUndeployEusuite = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`${BACKEND_URL}/eusuite/undeploy`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      showNotification('EUSUITE Removed', 'All EUSUITE apps have been undeployed', 'info');
-      setEusuiteOpen(false);
-      setEusuiteResult(null);
-      fetchPods();
-    } catch (error) {
-      console.error("EUSUITE undeploy error:", error);
-      showNotification('EUSUITE Error', error.response?.data?.detail || 'Failed to undeploy', 'error');
-    }
-  };
-
-  const getCategory = (type) => {
-    if (!type) return 'other';
-    const t = type.toLowerCase();
-    if (t.startsWith('wordpress')) return 'app';
-    if (t.startsWith('nginx') || t.startsWith('custom')) return 'single';
-    if (t.startsWith('postgres') || t.startsWith('mysql') || t.startsWith('redis')) return 'db';
-    if (t.startsWith('uptime-kuma')) return 'monitor';
-    if (t.startsWith('eusuite')) return 'eusuite';
-    return 'other';
-  };
-
-  // Separate EUSUITE pods from regular pods
-  const eusuitePods = pods.filter(pod => pod.type && pod.type.toLowerCase().startsWith('eusuite'));
-  const regularPods = pods.filter(pod => !pod.type || !pod.type.toLowerCase().startsWith('eusuite'));
-  
-  // Count running EUSUITE apps
-  const eusuiteRunning = eusuitePods.filter(p => p.status === 'Running').length;
-  const eusuiteTotal = eusuitePods.length;
-
-  // Debugging: Log all pods before filtering
-  useEffect(() => {
-    console.log("Current pods in state:", pods);
-  }, [pods]);
-
-  const filteredPods = regularPods.filter(pod => {
-    const cat = getCategory(pod.type);
-    if (tabValue === 0) return true;
-    if (tabValue === 1) return cat === 'app';
-    if (tabValue === 2) return cat === 'single';
-    if (tabValue === 3) return cat === 'db';
-    if (tabValue === 4) return cat === 'monitor';
-    return true;
-  });
-  
-  console.log("Total pods:", pods.length);
-  console.log("Filtered pods (tab " + tabValue + "):", filteredPods.length);
-  console.log("Pod types:", pods.map(p => p.type));
-
+// Tab Panel Component
+function TabPanel({ children, value, index, ...other }) {
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: 'background.default' }}>
-      <AppBar position="static" elevation={0} sx={{ bgcolor: 'background.paper', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-        <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 'bold', color: 'primary.main' }}>
-            {company}
-          </Typography>
-          <Chip 
-            label={`Total Cost: €${calculateTotalCost()} / mo`} 
-            variant="outlined" 
-            sx={{ mr: 2, borderColor: 'rgba(255,255,255,0.2)', color: 'text.primary' }} 
-          />
-          <Tooltip title="Monitoring Dashboard">
-            <Button 
-              color="inherit" 
-              startIcon={<TrendingUpIcon />}
-              onClick={() => navigate('/monitoring')}
-              sx={{ mr: 1 }}
-            >
-              Monitoring
-            </Button>
-          </Tooltip>
-          <IconButton color="inherit" onClick={fetchPods} sx={{ mr: 1 }}>
-            <RefreshIcon />
-          </IconButton>
-          <Button color="inherit" startIcon={<LogoutIcon />} onClick={handleLogout}>
-            Logout
-          </Button>
-          <Button color="error" onClick={handleDeleteCompany} sx={{ ml: 2 }}>
-            Delete Company
-          </Button>
-        </Toolbar>
-      </AppBar>
-
-      <Container maxWidth="lg" sx={{ mt: 6, mb: 4 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
-          <Typography variant="h4" component="h1" color="textPrimary" fontWeight="600">
-            Services
-          </Typography>
-          <Box display="flex" gap={2}>
-            <Button 
-              variant="outlined" 
-              startIcon={<RocketLaunchIcon />} 
-              onClick={() => setEusuiteOpen(true)}
-              size="large"
-              sx={{ 
-                borderColor: '#f59e0b', 
-                color: '#f59e0b',
-                '&:hover': { 
-                  borderColor: '#d97706', 
-                  bgcolor: 'rgba(245, 158, 11, 0.1)' 
-                }
-              }}
-            >
-              Deploy EUSUITE
-            </Button>
-            <Button 
-              variant="contained" 
-              startIcon={<AddIcon />} 
-              onClick={() => setOpen(true)}
-              size="large"
-            >
-              New Service
-            </Button>
-          </Box>
-        </Box>
-
-        <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
-          <Tab label="All Services" />
-          <Tab label="Bundles (WP)" />
-          <Tab label="Single Services" />
-          <Tab label="Databases" />
-          <Tab label="Monitoring" />
-        </Tabs>
-
-        <Grid container spacing={3}>
-          {/* EUSUITE Grouped Card - Only show if there are EUSUITE pods */}
-          {eusuitePods.length > 0 && tabValue === 0 && (
-            <Grid item xs={12} sm={6} md={4}>
-              <Card 
-                elevation={0} 
-                sx={{ 
-                  bgcolor: 'background.paper', 
-                  border: '2px solid #f59e0b',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  '&:hover': { 
-                    transform: 'translateY(-4px)',
-                    boxShadow: '0 8px 24px rgba(245, 158, 11, 0.3)'
-                  }
-                }}
-                onClick={() => setEusuiteDetailOpen(true)}
-              >
-                <CardContent>
-                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <Avatar sx={{ bgcolor: '#f59e0b', width: 40, height: 40 }}>
-                        <AppsIcon />
-                      </Avatar>
-                      <Typography variant="h6" component="div" fontWeight="bold" color="#f59e0b">
-                        EUSUITE
-                      </Typography>
-                    </Box>
-                    <Chip 
-                      label={`${eusuiteRunning}/${eusuiteTotal} Running`}
-                      color={eusuiteRunning === eusuiteTotal ? 'success' : (eusuiteRunning > 0 ? 'warning' : 'error')}
-                      size="small" 
-                      variant="filled"
-                    />
-                  </Box>
-                  <Typography color="textSecondary" variant="body2" gutterBottom>
-                    Dylan's Office 365 Suite
-                  </Typography>
-                  
-                  <Box sx={{ mt: 2, mb: 1 }}>
-                    <LinearProgress 
-                      variant="determinate" 
-                      value={(eusuiteRunning / eusuiteTotal) * 100} 
-                      sx={{ 
-                        height: 8, 
-                        borderRadius: 4,
-                        bgcolor: 'rgba(245, 158, 11, 0.2)',
-                        '& .MuiLinearProgress-bar': { bgcolor: '#f59e0b' }
-                      }}
-                    />
-                  </Box>
-                  
-                  <Box display="flex" flexWrap="wrap" gap={0.5} mt={2}>
-                    {eusuitePods.slice(0, 6).map(p => (
-                      <Chip 
-                        key={p.name}
-                        label={p.type.replace('eusuite-', '').split('-')[0]}
-                        size="small"
-                        color={p.status === 'Running' ? 'success' : 'error'}
-                        sx={{ fontSize: '0.65rem', height: 20 }}
-                      />
-                    ))}
-                    {eusuitePods.length > 6 && (
-                      <Chip 
-                        label={`+${eusuitePods.length - 6} more`}
-                        size="small"
-                        variant="outlined"
-                        sx={{ fontSize: '0.65rem', height: 20 }}
-                      />
-                    )}
-                  </Box>
-
-                  <Typography variant="body1" color="primary.main" fontWeight="bold" mt={2}>
-                    €{(eusuiteTotal * 5).toFixed(2)} / mo
-                  </Typography>
-                  
-                  <Button 
-                    fullWidth 
-                    variant="outlined" 
-                    sx={{ mt: 2, borderColor: '#f59e0b', color: '#f59e0b' }}
-                    onClick={(e) => { e.stopPropagation(); setEusuiteDetailOpen(true); }}
-                  >
-                    View All Apps →
-                  </Button>
-                </CardContent>
-              </Card>
-            </Grid>
-          )}
-
-          {filteredPods.map((pod) => {
-            const linkedPods = pod.group_id 
-              ? pods.filter(p => p.group_id === pod.group_id && p.name !== pod.name)
-              : [];
-
-            return (
-            <Grid item xs={12} sm={6} md={4} key={pod.name}>
-              <Card elevation={0} sx={{ bgcolor: 'background.paper', border: '1px solid rgba(255,255,255,0.1)' }}>
-                <CardContent>
-                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                    <Typography variant="h6" component="div" fontWeight="bold" color="text.primary">
-                      {pod.type.toUpperCase()}
-                    </Typography>
-                    <Chip 
-                      label={pod.status} 
-                      color={pod.status === 'Running' ? 'success' : (pod.status === 'Pending' ? 'warning' : 'error')} 
-                      size="small" 
-                      variant="filled"
-                    />
-                  </Box>
-                  <Typography color="textSecondary" variant="body2" gutterBottom sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                    {pod.name}
-                  </Typography>
-                  
-                  {/* Feature Status Badges */}
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 1, mb: 2 }}>
-                    {/* Storage Badge */}
-                    <Chip
-                      icon={<StorageIcon sx={{ fontSize: '0.9rem' }} />}
-                      label={pod.has_storage ? pod.storage_size : 'No Storage'}
-                      size="small"
-                      color={pod.has_storage ? 'success' : 'default'}
-                      variant={pod.has_storage ? 'filled' : 'outlined'}
-                      sx={{ 
-                        fontSize: '0.65rem', 
-                        height: '22px',
-                        opacity: pod.has_storage ? 1 : 0.5
-                      }}
-                    />
-                    {/* Scaling Badge */}
-                    <Chip
-                      icon={<SpeedIcon sx={{ fontSize: '0.9rem' }} />}
-                      label={pod.has_autoscaling ? `Scale ${pod.replicas}` : 'No Scaling'}
-                      size="small"
-                      color={pod.has_autoscaling ? 'info' : 'default'}
-                      variant={pod.has_autoscaling ? 'filled' : 'outlined'}
-                      sx={{ 
-                        fontSize: '0.65rem', 
-                        height: '22px',
-                        opacity: pod.has_autoscaling ? 1 : 0.5
-                      }}
-                    />
-                    {/* Backup Badge */}
-                    <Chip
-                      icon={<BackupIcon sx={{ fontSize: '0.9rem' }} />}
-                      label={pod.has_auto_backup ? 'Auto Backup' : (pod.backup_count > 0 ? `${pod.backup_count} Backups` : 'No Backup')}
-                      size="small"
-                      color={pod.has_auto_backup ? 'success' : (pod.backup_count > 0 ? 'warning' : 'default')}
-                      variant={pod.has_auto_backup || pod.backup_count > 0 ? 'filled' : 'outlined'}
-                      sx={{ 
-                        fontSize: '0.65rem', 
-                        height: '22px',
-                        opacity: pod.has_auto_backup || pod.backup_count > 0 ? 1 : 0.5
-                      }}
-                    />
-                  </Box>
-                  
-                  {pod.message && (
-                    <Alert severity="error" sx={{ mt: 1, mb: 1, py: 0, fontSize: '0.75rem' }}>
-                      {pod.message}
-                    </Alert>
-                  )}
-                  
-                  {linkedPods.length > 0 && (
-                    <Box sx={{ mt: 1, mb: 1, p: 1, bgcolor: 'rgba(255,255,255,0.05)', borderRadius: 1 }}>
-                      <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
-                        Linked Services:
-                      </Typography>
-                      {linkedPods.map(lp => (
-                        <Chip 
-                          key={lp.name} 
-                          label={lp.type} 
-                          size="small" 
-                          variant="outlined" 
-                          sx={{ mr: 0.5, mb: 0.5, fontSize: '0.7rem' }} 
-                        />
-                      ))}
-                    </Box>
-                  )}
-
-                  <Box sx={{ mt: 2, mb: 2 }}>
-                    <Typography variant="body2" color="text.secondary">
-                      Age: {pod.age}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Node: {pod.node_name || 'Pending'}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      IP: {pod.public_ip}
-                    </Typography>
-                    {pod.node_port && (
-                       <Typography variant="body2" sx={{ color: 'primary.main', fontWeight: 'bold' }}>
-                         Port: {pod.node_port}
-                       </Typography>
-                    )}
-                  </Box>
-
-                  {pod.external_url && (
-                    <Button 
-                      variant="contained" 
-                      fullWidth 
-                      size="small"
-                      href={pod.external_url}
-                      target="_blank"
-                      sx={{ mb: 1, bgcolor: 'primary.main', color: 'white' }}
-                    >
-                      Open via Domain ↗
-                    </Button>
-                  )}
-                  
-                  {pod.node_port && !pod.external_url && (
-                    <Button 
-                      variant="outlined" 
-                      fullWidth 
-                      size="small"
-                      href={`http://${pod.public_ip}:${pod.node_port}`}
-                      target="_blank"
-                      sx={{ mb: 1, borderColor: 'rgba(255,255,255,0.2)', color: 'primary.main' }}
-                    >
-                      Open via IP:Port ↗
-                    </Button>
-                  )}
-
-                  <Button 
-                      variant="outlined" 
-                      fullWidth 
-                      size="small"
-                      onClick={() => handleViewLogs(pod.name)}
-                      sx={{ mb: 1, borderColor: 'rgba(255,255,255,0.2)', color: 'text.secondary' }}
-                    >
-                      View Logs
-                  </Button>
-                  
-                  <Box display="flex" gap={1} mb={2}>
-                    <Button 
-                      variant="outlined" 
-                      size="small"
-                      startIcon={<MemoryIcon />}
-                      onClick={() => handleViewMetrics(pod.name)}
-                      sx={{ flex: 1, borderColor: 'rgba(255,255,255,0.2)', color: 'text.secondary' }}
-                      disabled={pod.status !== 'Running'}
-                    >
-                      Metrics
-                    </Button>
-                    <Button 
-                      variant="outlined" 
-                      size="small"
-                      startIcon={<SettingsIcon />}
-                      onClick={() => handleViewEnv(pod.name)}
-                      sx={{ flex: 1, borderColor: 'rgba(255,255,255,0.2)', color: 'text.secondary' }}
-                    >
-                      Env Vars
-                    </Button>
-                  </Box>
-
-                  <Box display="flex" gap={1} mb={2}>
-                    <Button 
-                      variant="outlined" 
-                      size="small"
-                      startIcon={<StorageIcon />}
-                      onClick={() => handleViewStorage(pod.name)}
-                      sx={{ flex: 1, borderColor: 'rgba(255,255,255,0.2)', color: 'text.secondary' }}
-                    >
-                      Storage
-                    </Button>
-                    <Button 
-                      variant="outlined" 
-                      size="small"
-                      startIcon={<SpeedIcon />}
-                      onClick={() => handleViewScaling(pod.name)}
-                      sx={{ flex: 1, borderColor: 'rgba(255,255,255,0.2)', color: 'text.secondary' }}
-                    >
-                      Scaling
-                    </Button>
-                  </Box>
-
-                  <Button 
-                    variant="outlined" 
-                    fullWidth 
-                    size="small"
-                    startIcon={<BackupIcon />}
-                    onClick={() => handleViewBackups(pod.name)}
-                    sx={{ mb: 2, borderColor: 'rgba(255,255,255,0.2)', color: 'text.secondary' }}
-                  >
-                    Backup & Restore
-                  </Button>
-
-                  {pod.message && (
-                      <Alert severity={pod.message.includes('Healthy') ? 'success' : 'error'} sx={{ mt: 1, py: 0.5, fontSize: '0.8rem' }}>
-                        {pod.message.length > 50 ? pod.message.substring(0, 50) + '...' : pod.message}
-                      </Alert>
-                    )}
-                    <Typography variant="body1" color="primary.main" fontWeight="bold" mt={1}>
-                      €{pod.cost.toFixed(2)} / mo
-                    </Typography>
-                </CardContent>
-                <CardActions sx={{ justifyContent: 'flex-end', px: 2, pb: 2 }}>
-                  <Button 
-                    size="small" 
-                    color="error" 
-                    startIcon={<DeleteIcon />}
-                    onClick={() => handleDelete(pod.name)}
-                  >
-                    Delete
-                  </Button>
-                </CardActions>
-              </Card>
-            </Grid>
-          );
-          })}
-        </Grid>
-
-        {pods.length === 0 && (
-          <Box textAlign="center" mt={10} p={5} sx={{ border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 4 }}>
-            <Typography variant="h6" color="textSecondary">
-              No services running yet.
-            </Typography>
-            <Button variant="outlined" sx={{ mt: 2 }} onClick={() => setOpen(true)}>
-              Deploy your first service
-            </Button>
-          </Box>
-        )}
-      </Container>
-
-      <Dialog open={open} onClose={() => setOpen(false)}>
-        <DialogTitle>Deploy New Service</DialogTitle>
-        <DialogContent sx={{ minWidth: 300, pt: 2 }}>
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Service Type</InputLabel>
-            <Select
-              value={serviceType}
-              label="Service Type"
-              onChange={(e) => setServiceType(e.target.value)}
-            >
-              <MenuItem value="nginx">Nginx Web Server</MenuItem>
-              <MenuItem value="wordpress">WordPress (Website + DB)</MenuItem>
-              <MenuItem value="uptime-kuma">Uptime Kuma (Monitoring)</MenuItem>
-              <MenuItem value="postgres">PostgreSQL Database</MenuItem>
-              <MenuItem value="redis">Redis Cache</MenuItem>
-              <MenuItem value="custom">Custom Docker Image</MenuItem>
-            </Select>
-          </FormControl>
-
-          {serviceType === 'custom' && (
-            <TextField
-              fullWidth
-              margin="dense"
-              label="Docker Image Name"
-              placeholder="e.g. nginx:latest or myrepo/app:v1"
-              value={customImage}
-              onChange={(e) => setCustomImage(e.target.value)}
-              helperText="Ensure the cluster can pull this image."
-            />
-          )}
-        </DialogContent>
-        <DialogActions sx={{ p: 3 }}>
-          <Button onClick={() => setOpen(false)} color="inherit">Cancel</Button>
-          <Button onClick={handleCreate} variant="contained">Deploy</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Logs Dialog */}
-      <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: '#0a1929' } }}>
-        <DialogTitle sx={{ color: 'white', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          Logs: {logPodName}
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          <Box sx={{ 
-            bgcolor: 'black', 
-            p: 2, 
-            borderRadius: 1, 
-            fontFamily: 'monospace', 
-            fontSize: '0.85rem', 
-            color: '#00ff00',
-            overflowX: 'auto',
-            whiteSpace: 'pre-wrap',
-            maxHeight: '60vh',
-            overflowY: 'auto'
-          }}>
-            {currentLogs || "No logs available..."}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setLogsOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Metrics Dialog */}
-      <Dialog open={metricsOpen} onClose={() => setMetricsOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { bgcolor: '#0a1929' } }}>
-        <DialogTitle sx={{ color: 'white', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          <Box display="flex" alignItems="center" gap={1}>
-            <MemoryIcon />
-            Resource Usage: {metricsPodName}
-          </Box>
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          {metricsLoading ? (
-            <Box display="flex" justifyContent="center" alignItems="center" py={4}>
-              <CircularProgress />
-            </Box>
-          ) : currentMetrics?.error ? (
-            <Alert severity="error">{currentMetrics.error}</Alert>
-          ) : currentMetrics ? (
-            <Box>
-              {/* CPU Usage */}
-              <Box mb={3}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  CPU Usage
-                </Typography>
-                <Box display="flex" alignItems="center" gap={2}>
-                  <Box flex={1}>
-                    <LinearProgress 
-                      variant="determinate" 
-                      value={currentMetrics.cpu_percent || 0} 
-                      sx={{ 
-                        height: 10, 
-                        borderRadius: 5,
-                        bgcolor: 'rgba(255,255,255,0.1)',
-                        '& .MuiLinearProgress-bar': {
-                          bgcolor: currentMetrics.cpu_percent > 80 ? 'error.main' : 
-                                   currentMetrics.cpu_percent > 50 ? 'warning.main' : 'success.main'
-                        }
-                      }}
-                    />
-                  </Box>
-                  <Typography variant="body1" color="text.primary" sx={{ minWidth: 80 }}>
-                    {currentMetrics.cpu_usage}
-                  </Typography>
-                </Box>
-                {currentMetrics.cpu_percent && (
-                  <Typography variant="caption" color="text.secondary">
-                    {currentMetrics.cpu_percent}% of limit
-                  </Typography>
-                )}
-              </Box>
-
-              {/* Memory Usage */}
-              <Box mb={3}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Memory Usage
-                </Typography>
-                <Box display="flex" alignItems="center" gap={2}>
-                  <Box flex={1}>
-                    <LinearProgress 
-                      variant="determinate" 
-                      value={currentMetrics.memory_percent || 0} 
-                      sx={{ 
-                        height: 10, 
-                        borderRadius: 5,
-                        bgcolor: 'rgba(255,255,255,0.1)',
-                        '& .MuiLinearProgress-bar': {
-                          bgcolor: currentMetrics.memory_percent > 80 ? 'error.main' : 
-                                   currentMetrics.memory_percent > 50 ? 'warning.main' : 'primary.main'
-                        }
-                      }}
-                    />
-                  </Box>
-                  <Typography variant="body1" color="text.primary" sx={{ minWidth: 80 }}>
-                    {currentMetrics.memory_usage}
-                  </Typography>
-                </Box>
-                {currentMetrics.memory_percent && (
-                  <Typography variant="caption" color="text.secondary">
-                    {currentMetrics.memory_percent}% of limit
-                  </Typography>
-                )}
-              </Box>
-
-              <Alert severity="info" sx={{ mt: 2 }}>
-                Metrics auto-refresh every 3 seconds
-              </Alert>
-            </Box>
-          ) : (
-            <Typography color="text.secondary">No metrics available</Typography>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setMetricsOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Environment Variables Dialog */}
-      <Dialog open={envOpen} onClose={() => setEnvOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: '#0a1929' } }}>
-        <DialogTitle sx={{ color: 'white', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          <Box display="flex" alignItems="center" gap={1}>
-            <SettingsIcon />
-            Environment Variables: {envDeploymentName}
-          </Box>
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          {envLoading ? (
-            <Box display="flex" justifyContent="center" alignItems="center" py={4}>
-              <CircularProgress />
-            </Box>
-          ) : (
-            <Box>
-              <Alert severity="warning" sx={{ mb: 2 }}>
-                Changing environment variables will restart the pod
-              </Alert>
-              
-              {/* Current Env Vars List */}
-              <List sx={{ bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 1, mb: 2 }}>
-                {Object.keys(currentEnvVars).length === 0 ? (
-                  <ListItem>
-                    <ListItemText 
-                      primary="No environment variables set" 
-                      sx={{ color: 'text.secondary' }}
-                    />
-                  </ListItem>
-                ) : (
-                  Object.entries(currentEnvVars).map(([key, value], index) => (
-                    <React.Fragment key={key}>
-                      {index > 0 && <Divider />}
-                      <ListItem
-                        secondaryAction={
-                          value !== '(secret)' && (
-                            <IconButton 
-                              edge="end" 
-                              color="error" 
-                              size="small"
-                              onClick={() => handleRemoveEnvVar(key)}
-                            >
-                              <DeleteIcon />
-                            </IconButton>
-                          )
-                        }
-                      >
-                        <ListItemText
-                          primary={
-                            <Box display="flex" alignItems="center" gap={1}>
-                              <Typography 
-                                component="span" 
-                                sx={{ fontFamily: 'monospace', color: 'primary.main' }}
-                              >
-                                {key}
-                              </Typography>
-                              {value === '(secret)' && (
-                                <Chip label="Secret" size="small" color="warning" />
-                              )}
-                            </Box>
-                          }
-                          secondary={
-                            <Typography 
-                              component="span" 
-                              sx={{ 
-                                fontFamily: 'monospace', 
-                                color: 'text.secondary',
-                                wordBreak: 'break-all'
-                              }}
-                            >
-                              {value === '(secret)' ? '••••••••' : value}
-                            </Typography>
-                          }
-                        />
-                      </ListItem>
-                    </React.Fragment>
-                  ))
-                )}
-              </List>
-
-              {/* Add New Env Var */}
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                Add New Variable
-              </Typography>
-              <Box display="flex" gap={1} alignItems="flex-start">
-                <TextField
-                  size="small"
-                  label="Key"
-                  value={newEnvKey}
-                  onChange={(e) => setNewEnvKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''))}
-                  placeholder="MY_VAR"
-                  sx={{ flex: 1 }}
-                />
-                <TextField
-                  size="small"
-                  label="Value"
-                  value={newEnvValue}
-                  onChange={(e) => setNewEnvValue(e.target.value)}
-                  placeholder="value"
-                  sx={{ flex: 2 }}
-                />
-                <Button 
-                  variant="outlined" 
-                  onClick={handleAddEnvVar}
-                  disabled={!newEnvKey.trim()}
-                >
-                  Add
-                </Button>
-              </Box>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-          <Button onClick={() => setEnvOpen(false)} color="inherit">Cancel</Button>
-          <Button onClick={handleSaveEnvVars} variant="contained" color="primary">
-            Save & Restart Pod
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Storage Dialog */}
-      <Dialog open={storageOpen} onClose={() => setStorageOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { bgcolor: '#0a1929' } }}>
-        <DialogTitle sx={{ color: 'white', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          <Box display="flex" alignItems="center" gap={1}>
-            <StorageIcon />
-            Persistent Storage: {storageDeployment}
-          </Box>
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          {storageLoading ? (
-            <Box display="flex" justifyContent="center" alignItems="center" py={4}>
-              <CircularProgress />
-            </Box>
-          ) : (
-            <Box>
-              {/* Storage Quota */}
-              {storageQuota && (
-                <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 1 }}>
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                    Company Storage Quota
-                  </Typography>
-                  <Box display="flex" justifyContent="space-between" alignItems="center">
-                    <Typography variant="body1" color="text.primary">
-                      {storageQuota.used_gi}Gi / {storageQuota.quota_gi}Gi used
-                    </Typography>
-                    <Typography variant="body2" color={storageQuota.available_gi < 5 ? 'error.main' : 'success.main'}>
-                      {storageQuota.available_gi}Gi available
-                    </Typography>
-                  </Box>
-                  <LinearProgress 
-                    variant="determinate" 
-                    value={storageQuota.percent_used} 
-                    sx={{ mt: 1, height: 8, borderRadius: 1 }}
-                    color={storageQuota.available_gi < 5 ? 'error' : 'primary'}
-                  />
-                </Box>
-              )}
-
-              {/* Current Storage */}
-              {currentStorage && currentStorage.volumes && currentStorage.volumes.length > 0 ? (
-                <Box sx={{ mb: 3 }}>
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                    Current Storage
-                  </Typography>
-                  {currentStorage.volumes.map((vol, idx) => (
-                    <Box 
-                      key={idx} 
-                      sx={{ 
-                        p: 2, 
-                        bgcolor: 'rgba(34, 197, 94, 0.1)', 
-                        borderRadius: 2, 
-                        mb: 1,
-                        border: '1px solid rgba(34, 197, 94, 0.3)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}
-                    >
-                      <Box>
-                        <Box display="flex" alignItems="center" gap={1}>
-                          <CloudDoneIcon sx={{ color: 'success.main', fontSize: 20 }} />
-                          <Typography variant="body1" color="success.main" fontWeight="medium">
-                            {vol.size || 'N/A'} mounted at {vol.mount_path}
-                          </Typography>
-                        </Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ ml: 3.5 }}>
-                          PVC: {vol.pvc_name} • Status: {vol.status || 'Bound'}
-                        </Typography>
-                      </Box>
-                      <Tooltip title="Remove Storage (Data will be lost!)">
-                        <IconButton 
-                          size="small" 
-                          onClick={handleDeleteStorage}
-                          sx={{ color: 'error.main' }}
-                        >
-                          <DeleteForeverIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  ))}
-                </Box>
-              ) : (
-                <>
-                  <Alert severity="info" sx={{ mb: 3 }}>
-                    No persistent storage attached. Add storage for databases or data that needs to survive restarts.
-                  </Alert>
-
-                  {/* Add Storage Form - Only show when no storage exists */}
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                    Add Persistent Storage
-                  </Typography>
-                  <Box sx={{ mb: 2, px: 1 }}>
-                    <Typography gutterBottom>Size: {storageSize}Gi</Typography>
-                    <Slider
-                      value={storageSize}
-                      onChange={(e, v) => setStorageSize(v)}
-                      min={1}
-                      max={storageQuota ? Math.min(50, storageQuota.available_gi) : 50}
-                      step={1}
-                      valueLabelDisplay="auto"
-                      valueLabelFormat={(v) => `${v}Gi`}
-                      marks={[
-                        { value: 1, label: '1Gi' },
-                        { value: 10, label: '10Gi' },
-                        { value: 25, label: '25Gi' },
-                        { value: 50, label: '50Gi' }
-                      ].filter(m => !storageQuota || m.value <= storageQuota.available_gi)}
-                    />
-                  </Box>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Mount Path"
-                    value={storageMountPath}
-                    onChange={(e) => setStorageMountPath(e.target.value)}
-                    helperText="Directory inside container where storage will be mounted"
-                    sx={{ mb: 2 }}
-                  />
-                  <Alert severity="warning">
-                    Adding storage will restart the pod. Data in the mount path will be preserved across restarts.
-                  </Alert>
-                </>
-              )}
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-          <Button onClick={() => setStorageOpen(false)} color="inherit">Close</Button>
-          {(!currentStorage || !currentStorage.volumes || currentStorage.volumes.length === 0) && (
-            <Button 
-              onClick={handleAddStorage} 
-              variant="contained" 
-              color="primary"
-              disabled={!storageQuota || storageQuota.available_gi < storageSize}
-            >
-              Add Storage
-            </Button>
-          )}
-        </DialogActions>
-      </Dialog>
-
-      {/* Scaling Dialog */}
-      <Dialog open={scalingOpen} onClose={() => setScalingOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { bgcolor: '#0a1929' } }}>
-        <DialogTitle sx={{ color: 'white', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          <Box display="flex" alignItems="center" gap={1}>
-            <SpeedIcon />
-            Auto-Scaling: {scalingDeployment}
-          </Box>
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          {scalingLoading ? (
-            <Box display="flex" justifyContent="center" alignItems="center" py={4}>
-              <CircularProgress />
-            </Box>
-          ) : (
-            <Box>
-              {scalingConfig ? (
-                <Alert severity="success" sx={{ mb: 3 }}>
-                  Auto-scaling is <strong>enabled</strong>. Current replicas: {scalingConfig.current_replicas}
-                </Alert>
-              ) : (
-                <Alert severity="info" sx={{ mb: 3 }}>
-                  Auto-scaling is not configured. Enable it to automatically scale based on CPU usage.
-                </Alert>
-              )}
-
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                Minimum Replicas: {minReplicas}
-              </Typography>
-              <Slider
-                value={minReplicas}
-                onChange={(e, v) => setMinReplicas(v)}
-                min={1}
-                max={10}
-                marks
-                sx={{ mb: 3 }}
-              />
-
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                Maximum Replicas: {maxReplicas}
-              </Typography>
-              <Slider
-                value={maxReplicas}
-                onChange={(e, v) => setMaxReplicas(v)}
-                min={minReplicas}
-                max={20}
-                marks
-                sx={{ mb: 3 }}
-              />
-
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                CPU Target: {cpuThreshold}%
-              </Typography>
-              <Slider
-                value={cpuThreshold}
-                onChange={(e, v) => setCpuThreshold(v)}
-                min={10}
-                max={100}
-                marks={[
-                  { value: 50, label: '50%' },
-                  { value: 80, label: '80%' }
-                ]}
-                sx={{ mb: 3 }}
-              />
-
-              <Alert severity="info">
-                When CPU usage exceeds {cpuThreshold}%, new replicas will be created (up to {maxReplicas}).
-              </Alert>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-          {scalingConfig && (
-            <Button onClick={handleDisableScaling} color="error">
-              Disable Scaling
-            </Button>
-          )}
-          <Box sx={{ flex: 1 }} />
-          <Button onClick={() => setScalingOpen(false)} color="inherit">Cancel</Button>
-          <Button onClick={handleSaveScaling} variant="contained" color="primary">
-            {scalingConfig ? 'Update' : 'Enable'} Auto-Scaling
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Backup & Restore Dialog */}
-      <Dialog open={backupOpen} onClose={() => setBackupOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: '#0a1929' } }}>
-        <DialogTitle sx={{ color: 'white', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          <Box display="flex" alignItems="center" gap={1}>
-            <BackupIcon />
-            Backup & Restore: {backupDeployment}
-          </Box>
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          {backupLoading ? (
-            <Box display="flex" justifyContent="center" alignItems="center" py={4}>
-              <CircularProgress />
-            </Box>
-          ) : (
-            <Box>
-              {/* Auto-Backup Toggle */}
-              <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 1 }}>
-                <Box display="flex" justifyContent="space-between" alignItems="center">
-                  <Box>
-                    <Typography variant="subtitle1" color="text.primary">
-                      <ScheduleIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
-                      Automatic Daily Backups
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Runs daily at {backupHour}:00 UTC
-                    </Typography>
-                  </Box>
-                  <FormControlLabel
-                    control={
-                      <Switch 
-                        checked={autoBackupEnabled} 
-                        onChange={handleToggleAutoBackup}
-                        color="primary"
-                      />
-                    }
-                    label={autoBackupEnabled ? 'Enabled' : 'Disabled'}
-                  />
-                </Box>
-                {!autoBackupEnabled && (
-                  <Box sx={{ mt: 2 }}>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                      Backup Hour (UTC): {backupHour}:00
-                    </Typography>
-                    <Slider
-                      value={backupHour}
-                      onChange={(e, v) => setBackupHour(v)}
-                      min={0}
-                      max={23}
-                      marks={[
-                        { value: 0, label: '0:00' },
-                        { value: 12, label: '12:00' },
-                        { value: 23, label: '23:00' }
-                      ]}
-                    />
-                  </Box>
-                )}
-              </Box>
-
-              {/* Manual Backup */}
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                <Typography variant="subtitle1" color="text.primary">
-                  Available Backups
-                </Typography>
-                <Button 
-                  variant="contained" 
-                  size="small" 
-                  startIcon={<BackupIcon />}
-                  onClick={handleCreateBackup}
-                >
-                  Create Backup Now
-                </Button>
-              </Box>
-
-              {/* Backup List */}
-              {backups.length === 0 ? (
-                <Alert severity="info">
-                  No backups available. Create a backup to protect your data.
-                </Alert>
-              ) : (
-                <TableContainer component={Paper} sx={{ bgcolor: 'rgba(0,0,0,0.3)' }}>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell sx={{ color: 'text.secondary' }}>Backup Name</TableCell>
-                        <TableCell sx={{ color: 'text.secondary' }}>Created</TableCell>
-                        <TableCell sx={{ color: 'text.secondary' }}>Status</TableCell>
-                        <TableCell sx={{ color: 'text.secondary' }} align="right">Actions</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {backups.map((backup) => (
-                        <TableRow key={backup.name}>
-                          <TableCell sx={{ color: 'text.primary', fontFamily: 'monospace' }}>
-                            {backup.name}
-                          </TableCell>
-                          <TableCell sx={{ color: 'text.secondary' }}>
-                            {backup.created_at ? new Date(backup.created_at).toLocaleString() : 'N/A'}
-                          </TableCell>
-                          <TableCell>
-                            <Chip 
-                              label={backup.status || 'Unknown'} 
-                              size="small" 
-                              color={backup.status === 'Completed' ? 'success' : 'warning'}
-                            />
-                          </TableCell>
-                          <TableCell align="right">
-                            <Button
-                              size="small"
-                              startIcon={<RestoreIcon />}
-                              onClick={() => handleRestoreBackup(backup.name)}
-                              sx={{ color: 'primary.main' }}
-                            >
-                              Restore
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              )}
-
-              <Alert severity="warning" sx={{ mt: 2 }}>
-                Restoring a backup will overwrite current data and restart the pod.
-              </Alert>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-          <Button onClick={() => setBackupOpen(false)} color="inherit">Close</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Professional Snackbar Notification */}
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={5000}
-        onClose={closeNotification}
-        TransitionComponent={Fade}
-        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-      >
-        <Alert 
-          onClose={closeNotification} 
-          severity={snackbar.severity}
-          variant="filled"
-          sx={{ 
-            minWidth: 320,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-            borderRadius: 2,
-            '& .MuiAlert-icon': {
-              fontSize: 24
-            }
-          }}
-        >
-          <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 0.5 }}>
-            {snackbar.title}
-          </Typography>
-          <Typography variant="body2" sx={{ opacity: 0.9 }}>
-            {snackbar.message}
-          </Typography>
-        </Alert>
-      </Snackbar>
-
-      {/* EUSUITE Deploy Dialog */}
-      <Dialog 
-        open={eusuiteOpen} 
-        onClose={() => !eusuiteDeploying && setEusuiteOpen(false)} 
-        maxWidth="md" 
-        fullWidth
-        PaperProps={{ sx: { bgcolor: 'background.paper', borderRadius: 2 } }}
-      >
-        <DialogTitle sx={{ 
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 2
-        }}>
-          <Avatar sx={{ bgcolor: '#f59e0b', width: 48, height: 48 }}>
-            <AppsIcon />
-          </Avatar>
-          <Box>
-            <Typography variant="h5" fontWeight="bold">EUSUITE - Office 365 Alternative</Typography>
-            <Typography variant="body2" color="text.secondary">
-              by Dylan0165 • github.com/Dylan0165/EUSUITE
-            </Typography>
-          </Box>
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          {!eusuiteResult ? (
-            <Box>
-              <Alert severity="info" sx={{ mb: 3 }}>
-                <Typography variant="subtitle2" fontWeight="bold">One-Click Deploy</Typography>
-                <Typography variant="body2">
-                  Deploy the complete EUSUITE office suite with a single click. This includes:
-                </Typography>
-              </Alert>
-              
-              <Grid container spacing={2} sx={{ mb: 3 }}>
-                {[
-                  { name: 'Login Portal', desc: 'Authentication', icon: '🔐' },
-                  { name: 'Dashboard', desc: 'App Launcher', icon: '🏠' },
-                  { name: 'EUMail', desc: 'Email Service', icon: '📧' },
-                  { name: 'EUCloud', desc: 'Cloud Storage', icon: '☁️' },
-                  { name: 'EUType', desc: 'Document Editor', icon: '📄' },
-                  { name: 'EUGroups', desc: 'Team Chat', icon: '💬' },
-                  { name: 'EUAdmin', desc: 'Admin Portal', icon: '⚙️' },
-                  { name: '+ Backends', desc: '6 API Services', icon: '🔧' }
-                ].map(app => (
-                  <Grid item xs={6} sm={3} key={app.name}>
-                    <Paper sx={{ 
-                      p: 2, 
-                      textAlign: 'center', 
-                      bgcolor: 'rgba(255,255,255,0.05)',
-                      border: '1px solid rgba(255,255,255,0.1)'
-                    }}>
-                      <Typography variant="h4">{app.icon}</Typography>
-                      <Typography variant="subtitle2" fontWeight="bold">{app.name}</Typography>
-                      <Typography variant="caption" color="text.secondary">{app.desc}</Typography>
-                    </Paper>
-                  </Grid>
-                ))}
-              </Grid>
-
-              {eusuiteDeploying && (
-                <Box sx={{ textAlign: 'center', py: 3 }}>
-                  <CircularProgress size={60} sx={{ color: '#f59e0b', mb: 2 }} />
-                  <Typography variant="h6">Deploying EUSUITE...</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    This may take a few minutes. Please wait...
-                  </Typography>
-                </Box>
-              )}
-            </Box>
-          ) : (
-            <Box>
-              <Alert severity={eusuiteResult.success ? "success" : "warning"} sx={{ mb: 3 }}>
-                <Typography variant="subtitle2" fontWeight="bold">
-                  {eusuiteResult.success ? '✓ Deployment Complete!' : '⚠ Partial Deployment'}
-                </Typography>
-                <Typography variant="body2">{eusuiteResult.message}</Typography>
-              </Alert>
-
-              {eusuiteResult.deployed.length > 0 && (
-                <Box sx={{ mb: 3 }}>
-                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                    Deployed Apps ({eusuiteResult.deployed.length})
-                  </Typography>
-                  <TableContainer component={Paper} sx={{ bgcolor: 'rgba(255,255,255,0.02)' }}>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>App</TableCell>
-                          <TableCell>Description</TableCell>
-                          <TableCell>Access URL</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {eusuiteResult.deployed.map(app => (
-                          <TableRow key={app.id}>
-                            <TableCell>
-                              <Typography fontWeight="bold">{app.name}</Typography>
-                            </TableCell>
-                            <TableCell>{app.description}</TableCell>
-                            <TableCell>
-                              <Button 
-                                size="small" 
-                                href={app.url} 
-                                target="_blank"
-                                startIcon={<OpenInNewIcon />}
-                              >
-                                Open
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </Box>
-              )}
-
-              {eusuiteResult.failed.length > 0 && (
-                <Box>
-                  <Typography variant="subtitle1" fontWeight="bold" color="error" gutterBottom>
-                    Failed Apps ({eusuiteResult.failed.length})
-                  </Typography>
-                  {eusuiteResult.failed.map(app => (
-                    <Alert severity="error" key={app.id} sx={{ mb: 1 }}>
-                      {app.name}: {app.error}
-                    </Alert>
-                  ))}
-                </Box>
-              )}
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-          {eusuiteResult ? (
-            <>
-              <Button 
-                onClick={handleUndeployEusuite} 
-                color="error" 
-                startIcon={<DeleteIcon />}
-              >
-                Undeploy All
-              </Button>
-              <Button 
-                onClick={() => { setEusuiteOpen(false); setEusuiteResult(null); }} 
-                variant="contained"
-              >
-                Done
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button 
-                onClick={() => setEusuiteOpen(false)} 
-                color="inherit"
-                disabled={eusuiteDeploying}
-              >
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleDeployEusuite} 
-                variant="contained"
-                disabled={eusuiteDeploying}
-                startIcon={eusuiteDeploying ? <CircularProgress size={20} /> : <RocketLaunchIcon />}
-                sx={{ 
-                  bgcolor: '#f59e0b', 
-                  '&:hover': { bgcolor: '#d97706' }
-                }}
-              >
-                {eusuiteDeploying ? 'Deploying...' : 'Deploy EUSUITE'}
-              </Button>
-            </>
-          )}
-        </DialogActions>
-      </Dialog>
-
-      {/* EUSUITE Detail Dialog - Shows all deployed EUSUITE apps */}
-      <Dialog 
-        open={eusuiteDetailOpen} 
-        onClose={() => setEusuiteDetailOpen(false)} 
-        maxWidth="lg" 
-        fullWidth
-        PaperProps={{ sx: { bgcolor: 'background.paper', borderRadius: 2 } }}
-      >
-        <DialogTitle sx={{ 
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between'
-        }}>
-          <Box display="flex" alignItems="center" gap={2}>
-            <Avatar sx={{ bgcolor: '#f59e0b', width: 48, height: 48 }}>
-              <AppsIcon />
-            </Avatar>
-            <Box>
-              <Typography variant="h5" fontWeight="bold">EUSUITE - Office 365 Suite</Typography>
-              <Typography variant="body2" color="text.secondary">
-                {eusuiteRunning} of {eusuiteTotal} apps running • by Dylan016504
-              </Typography>
-            </Box>
-          </Box>
-          <Chip 
-            label={eusuiteRunning === eusuiteTotal ? 'All Healthy' : `${eusuiteTotal - eusuiteRunning} Issues`}
-            color={eusuiteRunning === eusuiteTotal ? 'success' : 'warning'}
-            variant="filled"
-          />
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          <Grid container spacing={2}>
-            {eusuitePods.map(pod => (
-              <Grid item xs={12} sm={6} md={4} key={pod.name}>
-                <Paper sx={{ 
-                  p: 2, 
-                  bgcolor: 'rgba(255,255,255,0.02)',
-                  border: pod.status === 'Running' 
-                    ? '1px solid rgba(34, 197, 94, 0.3)' 
-                    : '1px solid rgba(239, 68, 68, 0.3)'
-                }}>
-                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                    <Typography variant="subtitle1" fontWeight="bold">
-                      {pod.type.replace('eusuite-', '').replace(/-/g, ' ').toUpperCase()}
-                    </Typography>
-                    <Chip 
-                      label={pod.status} 
-                      size="small"
-                      color={pod.status === 'Running' ? 'success' : 'error'}
-                    />
-                  </Box>
-                  
-                  <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
-                    {pod.name.substring(0, 40)}...
-                  </Typography>
-                  
-                  {pod.message && (
-                    <Alert severity="error" sx={{ mt: 1, py: 0, fontSize: '0.7rem' }}>
-                      {pod.message.substring(0, 60)}...
-                    </Alert>
-                  )}
-                  
-                  <Box display="flex" gap={1} mt={2}>
-                    {pod.node_port && (
-                      <Button 
-                        size="small" 
-                        variant="outlined"
-                        href={`http://${pod.public_ip || '192.168.154.114'}:${pod.node_port}`}
-                        target="_blank"
-                        startIcon={<OpenInNewIcon />}
-                        sx={{ fontSize: '0.7rem' }}
-                      >
-                        Open
-                      </Button>
-                    )}
-                    <Button 
-                      size="small" 
-                      variant="outlined"
-                      onClick={() => {
-                        setEusuiteDetailOpen(false);
-                        handleViewLogs(pod.name);
-                      }}
-                      sx={{ fontSize: '0.7rem' }}
-                    >
-                      Logs
-                    </Button>
-                  </Box>
-                </Paper>
-              </Grid>
-            ))}
-          </Grid>
-          
-          {eusuitePods.length === 0 && (
-            <Box textAlign="center" py={4}>
-              <Typography color="text.secondary">No EUSUITE apps deployed yet.</Typography>
-              <Button 
-                variant="contained" 
-                sx={{ mt: 2, bgcolor: '#f59e0b' }}
-                onClick={() => { setEusuiteDetailOpen(false); setEusuiteOpen(true); }}
-              >
-                Deploy EUSUITE Now
-              </Button>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.1)', justifyContent: 'space-between' }}>
-          <Button 
-            onClick={handleUndeployEusuite} 
-            color="error" 
-            startIcon={<DeleteIcon />}
-            disabled={eusuitePods.length === 0}
-          >
-            Undeploy All EUSUITE Apps
-          </Button>
-          <Button onClick={() => setEusuiteDetailOpen(false)} variant="contained">
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`pod-tabpanel-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{ p: 2 }}>{children}</Box>}
+    </div>
   );
 }
 
-export default Dashboard;
+// Pod Card Component
+const PodCard = React.memo(({ 
+  pod, 
+  onViewDetails, 
+  onDelete, 
+  onRestart,
+  isDeleting 
+}) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
+  const getStatusIcon = (status) => {
+    switch (status?.toLowerCase()) {
+      case 'running': return <CheckCircleIcon sx={{ color: STATUS_COLORS.Running }} />;
+      case 'pending': return <PendingIcon sx={{ color: STATUS_COLORS.Pending }} />;
+      case 'failed': return <ErrorIcon sx={{ color: STATUS_COLORS.Failed }} />;
+      case 'terminated': return <ErrorIcon sx={{ color: STATUS_COLORS.Terminated }} />;
+      default: return <WarningIcon sx={{ color: STATUS_COLORS.Unknown }} />;
+    }
+  };
+
+  return (
+    <Fade in timeout={ANIMATION_DURATION.normal}>
+      <Card
+        sx={{
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'linear-gradient(145deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%)',
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(99, 102, 241, 0.2)',
+          borderRadius: 3,
+          transition: `all ${ANIMATION_DURATION.normal}ms ease`,
+          '&:hover': {
+            transform: 'translateY(-4px)',
+            boxShadow: '0 12px 40px rgba(99, 102, 241, 0.15)',
+            borderColor: 'rgba(99, 102, 241, 0.4)',
+          },
+        }}
+      >
+        <CardContent sx={{ flexGrow: 1, p: 2.5 }}>
+          {/* Header */}
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0, flex: 1 }}>
+              {getStatusIcon(pod.status)}
+              <Typography
+                variant="subtitle1"
+                sx={{
+                  fontWeight: 600,
+                  color: '#f1f5f9',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {pod.name}
+              </Typography>
+            </Box>
+            <StatusBadge status={pod.status} size="small" />
+          </Box>
+
+          {/* Info Grid */}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="caption" sx={{ color: '#94a3b8', minWidth: 60 }}>
+                Image:
+              </Typography>
+              <Tooltip title={pod.image || 'N/A'}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: '#cbd5e1',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    flex: 1,
+                  }}
+                >
+                  {pod.image?.split('/').pop() || 'N/A'}
+                </Typography>
+              </Tooltip>
+            </Box>
+
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="caption" sx={{ color: '#94a3b8', minWidth: 60 }}>
+                Restarts:
+              </Typography>
+              <Chip
+                size="small"
+                label={pod.restarts || 0}
+                sx={{
+                  height: 20,
+                  fontSize: '0.7rem',
+                  bgcolor: pod.restarts > 5 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(99, 102, 241, 0.2)',
+                  color: pod.restarts > 5 ? '#ef4444' : '#a5b4fc',
+                }}
+              />
+            </Box>
+
+            {/* Resource Usage */}
+            {(pod.cpu_usage || pod.memory_usage) && (
+              <Box sx={{ mt: 1 }}>
+                {pod.cpu_usage && (
+                  <ResourceBar
+                    label="CPU"
+                    value={parseFloat(pod.cpu_usage) || 0}
+                    max={100}
+                    unit="%"
+                    color={COLORS.primary}
+                    size="small"
+                  />
+                )}
+                {pod.memory_usage && (
+                  <ResourceBar
+                    label="Memory"
+                    value={parseFloat(pod.memory_usage) || 0}
+                    max={100}
+                    unit="%"
+                    color={COLORS.secondary}
+                    size="small"
+                  />
+                )}
+              </Box>
+            )}
+          </Box>
+        </CardContent>
+
+        {/* Actions */}
+        <CardActions sx={{ p: 2, pt: 0, gap: 1 }}>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<VisibilityIcon />}
+            onClick={() => onViewDetails(pod)}
+            sx={{
+              flex: 1,
+              borderColor: 'rgba(99, 102, 241, 0.3)',
+              color: '#a5b4fc',
+              fontSize: '0.75rem',
+              '&:hover': {
+                borderColor: '#6366f1',
+                bgcolor: 'rgba(99, 102, 241, 0.1)',
+              },
+            }}
+          >
+            Details
+          </Button>
+          <Tooltip title="Restart Pod">
+            <IconButton
+              size="small"
+              onClick={() => onRestart(pod.name)}
+              sx={{ color: '#fbbf24' }}
+            >
+              <RestartIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Delete Pod">
+            <IconButton
+              size="small"
+              onClick={() => onDelete(pod.name)}
+              disabled={isDeleting}
+              sx={{ color: '#ef4444' }}
+            >
+              {isDeleting ? <CircularProgress size={18} /> : <DeleteIcon fontSize="small" />}
+            </IconButton>
+          </Tooltip>
+        </CardActions>
+      </Card>
+    </Fade>
+  );
+});
+
+// EUSUITE Card Component
+const EusuiteCard = React.memo(({ 
+  pods, 
+  onViewDetails, 
+  onUndeploy,
+  isUndeploying 
+}) => {
+  const [expanded, setExpanded] = useState(false);
+  const runningCount = pods.filter(p => p.status === 'Running').length;
+  const totalCount = pods.length;
+
+  return (
+    <Fade in timeout={ANIMATION_DURATION.normal}>
+      <Card
+        sx={{
+          background: 'linear-gradient(145deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.1) 100%)',
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(139, 92, 246, 0.3)',
+          borderRadius: 3,
+          overflow: 'hidden',
+        }}
+      >
+        <CardContent sx={{ p: 2.5 }}>
+          {/* Header */}
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Box
+                sx={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 2,
+                  background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <AppsIcon sx={{ color: '#fff', fontSize: 28 }} />
+              </Box>
+              <Box>
+                <Typography variant="h6" sx={{ color: '#f1f5f9', fontWeight: 600 }}>
+                  EUSUITE Office 365
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#94a3b8' }}>
+                  Dylan's Office Suite
+                </Typography>
+              </Box>
+            </Box>
+            <Chip
+              label={`${runningCount}/${totalCount} Running`}
+              sx={{
+                bgcolor: runningCount === totalCount 
+                  ? 'rgba(34, 197, 94, 0.2)' 
+                  : 'rgba(251, 191, 36, 0.2)',
+                color: runningCount === totalCount ? '#22c55e' : '#fbbf24',
+                fontWeight: 500,
+              }}
+            />
+          </Box>
+
+          {/* Progress */}
+          <Box sx={{ mb: 2 }}>
+            <LinearProgress
+              variant="determinate"
+              value={(runningCount / totalCount) * 100}
+              sx={{
+                height: 8,
+                borderRadius: 4,
+                bgcolor: 'rgba(99, 102, 241, 0.1)',
+                '& .MuiLinearProgress-bar': {
+                  borderRadius: 4,
+                  background: 'linear-gradient(90deg, #6366f1 0%, #22c55e 100%)',
+                },
+              }}
+            />
+          </Box>
+
+          {/* Expandable Pod List */}
+          <Collapse in={expanded}>
+            <Divider sx={{ my: 2, borderColor: 'rgba(99, 102, 241, 0.2)' }} />
+            <List dense sx={{ py: 0 }}>
+              {pods.map((pod) => (
+                <ListItem
+                  key={pod.name}
+                  sx={{
+                    borderRadius: 1,
+                    mb: 0.5,
+                    bgcolor: 'rgba(15, 23, 42, 0.5)',
+                    '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.1)' },
+                  }}
+                  secondaryAction={
+                    <IconButton 
+                      size="small" 
+                      onClick={() => onViewDetails(pod)}
+                      sx={{ color: '#a5b4fc' }}
+                    >
+                      <VisibilityIcon fontSize="small" />
+                    </IconButton>
+                  }
+                >
+                  <ListItemIcon sx={{ minWidth: 32 }}>
+                    <StatusBadge status={pod.status} size="small" showLabel={false} />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={pod.name}
+                    primaryTypographyProps={{
+                      variant: 'body2',
+                      sx: { color: '#e2e8f0', fontWeight: 500 },
+                    }}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          </Collapse>
+        </CardContent>
+
+        <CardActions sx={{ p: 2, pt: 0, justifyContent: 'space-between' }}>
+          <Button
+            size="small"
+            onClick={() => setExpanded(!expanded)}
+            endIcon={expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            sx={{ color: '#a5b4fc' }}
+          >
+            {expanded ? 'Hide' : 'Show'} Apps ({pods.length})
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            onClick={onUndeploy}
+            disabled={isUndeploying}
+            startIcon={isUndeploying ? <CircularProgress size={16} /> : <DeleteIcon />}
+            sx={{
+              borderColor: 'rgba(239, 68, 68, 0.3)',
+              '&:hover': {
+                borderColor: '#ef4444',
+                bgcolor: 'rgba(239, 68, 68, 0.1)',
+              },
+            }}
+          >
+            Undeploy
+          </Button>
+        </CardActions>
+      </Card>
+    </Fade>
+  );
+});
+
+// Pod Detail Modal Component
+const PodDetailModal = ({ 
+  open, 
+  onClose, 
+  pod, 
+  token,
+  onRefresh 
+}) => {
+  const [activeTab, setActiveTab] = useState(0);
+  const [logs, setLogs] = useState('');
+  const [metrics, setMetrics] = useState(null);
+  const [envVars, setEnvVars] = useState([]);
+  const [storage, setStorage] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchLogs = useCallback(async () => {
+    if (!pod) return;
+    setLoading(true);
+    try {
+      const response = await axios.get(`${API_BASE}/pods/${pod.name}/logs`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setLogs(response.data.logs || 'No logs available');
+    } catch (err) {
+      setLogs('Error fetching logs: ' + (err.response?.data?.detail || err.message));
+    }
+    setLoading(false);
+  }, [pod, token]);
+
+  const fetchMetrics = useCallback(async () => {
+    if (!pod) return;
+    setLoading(true);
+    try {
+      const response = await axios.get(`${API_BASE}/pods/${pod.name}/metrics`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setMetrics(response.data);
+    } catch (err) {
+      setMetrics(null);
+    }
+    setLoading(false);
+  }, [pod, token]);
+
+  const fetchEnvVars = useCallback(async () => {
+    if (!pod) return;
+    setLoading(true);
+    try {
+      const response = await axios.get(`${API_BASE}/pods/${pod.name}/env`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setEnvVars(response.data.env_vars || []);
+    } catch (err) {
+      setEnvVars([]);
+    }
+    setLoading(false);
+  }, [pod, token]);
+
+  const fetchStorage = useCallback(async () => {
+    if (!pod) return;
+    setLoading(true);
+    try {
+      const response = await axios.get(`${API_BASE}/pods/${pod.name}/storage`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setStorage(response.data.volumes || []);
+    } catch (err) {
+      setStorage([]);
+    }
+    setLoading(false);
+  }, [pod, token]);
+
+  useEffect(() => {
+    if (open && pod) {
+      switch (activeTab) {
+        case 0: // Info - no fetch needed
+          break;
+        case 1:
+          fetchLogs();
+          break;
+        case 2:
+          fetchMetrics();
+          break;
+        case 3:
+          fetchEnvVars();
+          break;
+        case 4:
+          fetchStorage();
+          break;
+        default:
+          break;
+      }
+    }
+  }, [open, pod, activeTab, fetchLogs, fetchMetrics, fetchEnvVars, fetchStorage]);
+
+  if (!pod) return null;
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      PaperProps={{
+        sx: {
+          bgcolor: '#1e293b',
+          backgroundImage: 'none',
+          borderRadius: 3,
+          border: '1px solid rgba(99, 102, 241, 0.2)',
+        },
+      }}
+    >
+      <DialogTitle sx={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between',
+        borderBottom: '1px solid rgba(99, 102, 241, 0.2)',
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <StatusBadge status={pod.status} />
+          <Typography variant="h6" sx={{ color: '#f1f5f9' }}>
+            {pod.name}
+          </Typography>
+        </Box>
+        <IconButton onClick={onClose} sx={{ color: '#94a3b8' }}>
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
+
+      <Tabs
+        value={activeTab}
+        onChange={(e, v) => setActiveTab(v)}
+        sx={{
+          borderBottom: '1px solid rgba(99, 102, 241, 0.2)',
+          '& .MuiTab-root': { color: '#94a3b8' },
+          '& .Mui-selected': { color: '#6366f1' },
+          '& .MuiTabs-indicator': { bgcolor: '#6366f1' },
+        }}
+      >
+        <Tab label="Info" icon={<SettingsIcon />} iconPosition="start" />
+        <Tab label="Logs" icon={<TerminalIcon />} iconPosition="start" />
+        <Tab label="Metrics" icon={<TimelineIcon />} iconPosition="start" />
+        <Tab label="Environment" icon={<SettingsIcon />} iconPosition="start" />
+        <Tab label="Storage" icon={<StorageIcon />} iconPosition="start" />
+      </Tabs>
+
+      <DialogContent sx={{ p: 0, minHeight: 400 }}>
+        {loading && <LinearProgress sx={{ bgcolor: 'rgba(99, 102, 241, 0.2)' }} />}
+
+        {/* Info Tab */}
+        <TabPanel value={activeTab} index={0}>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 2, bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2 }}>
+                <Typography variant="subtitle2" sx={{ color: '#94a3b8', mb: 1 }}>
+                  Pod Information
+                </Typography>
+                <List dense>
+                  <ListItem>
+                    <ListItemText
+                      primary="Name"
+                      secondary={pod.name}
+                      primaryTypographyProps={{ color: '#94a3b8', variant: 'caption' }}
+                      secondaryTypographyProps={{ color: '#e2e8f0' }}
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText
+                      primary="Status"
+                      secondary={pod.status}
+                      primaryTypographyProps={{ color: '#94a3b8', variant: 'caption' }}
+                      secondaryTypographyProps={{ color: STATUS_COLORS[pod.status] || '#94a3b8' }}
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText
+                      primary="Image"
+                      secondary={pod.image || 'N/A'}
+                      primaryTypographyProps={{ color: '#94a3b8', variant: 'caption' }}
+                      secondaryTypographyProps={{ color: '#e2e8f0', sx: { wordBreak: 'break-all' } }}
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText
+                      primary="Restarts"
+                      secondary={pod.restarts || 0}
+                      primaryTypographyProps={{ color: '#94a3b8', variant: 'caption' }}
+                      secondaryTypographyProps={{ color: pod.restarts > 5 ? '#ef4444' : '#e2e8f0' }}
+                    />
+                  </ListItem>
+                </List>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 2, bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2 }}>
+                <Typography variant="subtitle2" sx={{ color: '#94a3b8', mb: 1 }}>
+                  Resource Usage
+                </Typography>
+                <Box sx={{ mt: 2 }}>
+                  <ResourceBar
+                    label="CPU"
+                    value={parseFloat(pod.cpu_usage) || 0}
+                    max={100}
+                    unit="%"
+                    color={COLORS.primary}
+                  />
+                  <ResourceBar
+                    label="Memory"
+                    value={parseFloat(pod.memory_usage) || 0}
+                    max={100}
+                    unit="%"
+                    color={COLORS.secondary}
+                  />
+                </Box>
+              </Paper>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        {/* Logs Tab */}
+        <TabPanel value={activeTab} index={1}>
+          <Paper
+            sx={{
+              p: 2,
+              bgcolor: '#0f172a',
+              borderRadius: 2,
+              fontFamily: 'monospace',
+              fontSize: '0.8rem',
+              color: '#22c55e',
+              maxHeight: 400,
+              overflow: 'auto',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+            }}
+          >
+            {logs || 'No logs available'}
+          </Paper>
+          <Button
+            variant="outlined"
+            startIcon={<RefreshIcon />}
+            onClick={fetchLogs}
+            sx={{ mt: 2 }}
+          >
+            Refresh Logs
+          </Button>
+        </TabPanel>
+
+        {/* Metrics Tab */}
+        <TabPanel value={activeTab} index={2}>
+          {metrics ? (
+            <Grid container spacing={2}>
+              <Grid item xs={6}>
+                <Paper sx={{ p: 3, bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2, textAlign: 'center' }}>
+                  <SpeedIcon sx={{ fontSize: 40, color: '#6366f1', mb: 1 }} />
+                  <Typography variant="h4" sx={{ color: '#f1f5f9' }}>
+                    {metrics.cpu || '0%'}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#94a3b8' }}>
+                    CPU Usage
+                  </Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={6}>
+                <Paper sx={{ p: 3, bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2, textAlign: 'center' }}>
+                  <MemoryIcon sx={{ fontSize: 40, color: '#8b5cf6', mb: 1 }} />
+                  <Typography variant="h4" sx={{ color: '#f1f5f9' }}>
+                    {metrics.memory || '0 Mi'}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#94a3b8' }}>
+                    Memory Usage
+                  </Typography>
+                </Paper>
+              </Grid>
+            </Grid>
+          ) : (
+            <Alert severity="info" sx={{ bgcolor: 'rgba(99, 102, 241, 0.1)' }}>
+              No metrics available for this pod
+            </Alert>
+          )}
+        </TabPanel>
+
+        {/* Environment Tab */}
+        <TabPanel value={activeTab} index={3}>
+          {envVars.length > 0 ? (
+            <Paper sx={{ bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2 }}>
+              <List dense>
+                {envVars.map((env, index) => (
+                  <ListItem key={index} divider>
+                    <ListItemText
+                      primary={env.name}
+                      secondary={env.value || '***hidden***'}
+                      primaryTypographyProps={{ color: '#6366f1', fontFamily: 'monospace' }}
+                      secondaryTypographyProps={{ color: '#94a3b8', fontFamily: 'monospace' }}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </Paper>
+          ) : (
+            <Alert severity="info" sx={{ bgcolor: 'rgba(99, 102, 241, 0.1)' }}>
+              No environment variables found
+            </Alert>
+          )}
+        </TabPanel>
+
+        {/* Storage Tab */}
+        <TabPanel value={activeTab} index={4}>
+          {storage.length > 0 ? (
+            <List>
+              {storage.map((vol, index) => (
+                <Paper key={index} sx={{ mb: 1, bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2 }}>
+                  <ListItem>
+                    <ListItemIcon>
+                      <StorageIcon sx={{ color: '#6366f1' }} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={vol.name}
+                      secondary={`Mount: ${vol.mountPath || 'N/A'} | Type: ${vol.type || 'Unknown'}`}
+                      primaryTypographyProps={{ color: '#e2e8f0' }}
+                      secondaryTypographyProps={{ color: '#94a3b8' }}
+                    />
+                  </ListItem>
+                </Paper>
+              ))}
+            </List>
+          ) : (
+            <Alert severity="info" sx={{ bgcolor: 'rgba(99, 102, 241, 0.1)' }}>
+              No storage volumes attached
+            </Alert>
+          )}
+        </TabPanel>
+      </DialogContent>
+
+      <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(99, 102, 241, 0.2)' }}>
+        <Button onClick={onClose} sx={{ color: '#94a3b8' }}>
+          Close
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+// Create Pod Modal Component
+const CreatePodModal = ({ open, onClose, onCreate, loading }) => {
+  const [podData, setPodData] = useState({
+    name: '',
+    image: '',
+    port: '',
+    replicas: 1,
+    cpu_limit: '100m',
+    memory_limit: '128Mi',
+    env_vars: [],
+  });
+  const [newEnvVar, setNewEnvVar] = useState({ name: '', value: '' });
+
+  const handleSubmit = () => {
+    if (!podData.name || !podData.image) return;
+    onCreate({
+      ...podData,
+      port: podData.port ? parseInt(podData.port) : undefined,
+    });
+  };
+
+  const addEnvVar = () => {
+    if (newEnvVar.name && newEnvVar.value) {
+      setPodData(prev => ({
+        ...prev,
+        env_vars: [...prev.env_vars, { ...newEnvVar }],
+      }));
+      setNewEnvVar({ name: '', value: '' });
+    }
+  };
+
+  const removeEnvVar = (index) => {
+    setPodData(prev => ({
+      ...prev,
+      env_vars: prev.env_vars.filter((_, i) => i !== index),
+    }));
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{
+        sx: {
+          bgcolor: '#1e293b',
+          backgroundImage: 'none',
+          borderRadius: 3,
+          border: '1px solid rgba(99, 102, 241, 0.2)',
+        },
+      }}
+    >
+      <DialogTitle sx={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: 2,
+        borderBottom: '1px solid rgba(99, 102, 241, 0.2)',
+      }}>
+        <AddIcon sx={{ color: '#6366f1' }} />
+        <Typography variant="h6" sx={{ color: '#f1f5f9' }}>
+          Deploy New Pod
+        </Typography>
+      </DialogTitle>
+
+      <DialogContent sx={{ mt: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Pod Name"
+              value={podData.name}
+              onChange={(e) => setPodData(prev => ({ ...prev, name: e.target.value }))}
+              placeholder="my-app"
+              InputProps={{
+                sx: { bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2 },
+              }}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Docker Image"
+              value={podData.image}
+              onChange={(e) => setPodData(prev => ({ ...prev, image: e.target.value }))}
+              placeholder="nginx:latest"
+              InputProps={{
+                sx: { bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2 },
+              }}
+            />
+          </Grid>
+          <Grid item xs={6}>
+            <TextField
+              fullWidth
+              label="Port"
+              type="number"
+              value={podData.port}
+              onChange={(e) => setPodData(prev => ({ ...prev, port: e.target.value }))}
+              placeholder="80"
+              InputProps={{
+                sx: { bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2 },
+              }}
+            />
+          </Grid>
+          <Grid item xs={6}>
+            <TextField
+              fullWidth
+              label="Replicas"
+              type="number"
+              value={podData.replicas}
+              onChange={(e) => setPodData(prev => ({ ...prev, replicas: parseInt(e.target.value) || 1 }))}
+              InputProps={{
+                sx: { bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2 },
+                inputProps: { min: 1, max: 10 },
+              }}
+            />
+          </Grid>
+          <Grid item xs={6}>
+            <TextField
+              fullWidth
+              label="CPU Limit"
+              value={podData.cpu_limit}
+              onChange={(e) => setPodData(prev => ({ ...prev, cpu_limit: e.target.value }))}
+              placeholder="100m"
+              InputProps={{
+                sx: { bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2 },
+              }}
+            />
+          </Grid>
+          <Grid item xs={6}>
+            <TextField
+              fullWidth
+              label="Memory Limit"
+              value={podData.memory_limit}
+              onChange={(e) => setPodData(prev => ({ ...prev, memory_limit: e.target.value }))}
+              placeholder="128Mi"
+              InputProps={{
+                sx: { bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2 },
+              }}
+            />
+          </Grid>
+
+          {/* Environment Variables */}
+          <Grid item xs={12}>
+            <Typography variant="subtitle2" sx={{ color: '#94a3b8', mb: 1 }}>
+              Environment Variables
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+              <TextField
+                size="small"
+                placeholder="NAME"
+                value={newEnvVar.name}
+                onChange={(e) => setNewEnvVar(prev => ({ ...prev, name: e.target.value }))}
+                sx={{ flex: 1 }}
+                InputProps={{
+                  sx: { bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 1 },
+                }}
+              />
+              <TextField
+                size="small"
+                placeholder="VALUE"
+                value={newEnvVar.value}
+                onChange={(e) => setNewEnvVar(prev => ({ ...prev, value: e.target.value }))}
+                sx={{ flex: 1 }}
+                InputProps={{
+                  sx: { bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 1 },
+                }}
+              />
+              <IconButton onClick={addEnvVar} sx={{ color: '#6366f1' }}>
+                <AddIcon />
+              </IconButton>
+            </Box>
+            {podData.env_vars.map((env, index) => (
+              <Chip
+                key={index}
+                label={`${env.name}=${env.value}`}
+                onDelete={() => removeEnvVar(index)}
+                size="small"
+                sx={{
+                  mr: 0.5,
+                  mb: 0.5,
+                  bgcolor: 'rgba(99, 102, 241, 0.2)',
+                  color: '#a5b4fc',
+                }}
+              />
+            ))}
+          </Grid>
+        </Grid>
+      </DialogContent>
+
+      <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(99, 102, 241, 0.2)' }}>
+        <Button onClick={onClose} sx={{ color: '#94a3b8' }}>
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          onClick={handleSubmit}
+          disabled={loading || !podData.name || !podData.image}
+          startIcon={loading ? <CircularProgress size={18} /> : <AddIcon />}
+          sx={{
+            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+            '&:hover': {
+              background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+            },
+          }}
+        >
+          Deploy Pod
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+// Main Dashboard Component
+export default function Dashboard() {
+  const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  
+  // Auth State
+  const [token] = useState(() => localStorage.getItem('token'));
+  const [company] = useState(() => localStorage.getItem('company'));
+  
+  // UI State
+  const [drawerOpen, setDrawerOpen] = useState(!isMobile);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [selectedPod, setSelectedPod] = useState(null);
+  
+  // Data State
+  const [pods, setPods] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [eusuitePods, setEusuitePods] = useState([]);
+  const [eusuiteDeployed, setEusuiteDeployed] = useState(false);
+  
+  // Action State
+  const [actionLoading, setActionLoading] = useState({});
+  
+  // Notification State
+  const { notification, showNotification, hideNotification } = useNotification();
+
+  // Fetch pods
+  const fetchPods = useCallback(async () => {
+    if (!token) return;
+    try {
+      const response = await axios.get(`${API_BASE}/pods`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const allPods = response.data.pods || [];
+      
+      // Separate EUSUITE pods
+      const euPods = allPods.filter(p => 
+        p.name.startsWith('eusuite-') || 
+        p.name.startsWith('eumail-') || 
+        p.name.startsWith('eucloud-') || 
+        p.name.startsWith('eutype-') || 
+        p.name.startsWith('eugroups-') || 
+        p.name.startsWith('euadmin-')
+      );
+      const regularPods = allPods.filter(p => 
+        !p.name.startsWith('eusuite-') && 
+        !p.name.startsWith('eumail-') && 
+        !p.name.startsWith('eucloud-') && 
+        !p.name.startsWith('eutype-') && 
+        !p.name.startsWith('eugroups-') && 
+        !p.name.startsWith('euadmin-')
+      );
+      
+      setPods(regularPods);
+      setEusuitePods(euPods);
+      setEusuiteDeployed(euPods.length > 0);
+      setLoading(false);
+    } catch (err) {
+      if (err.response?.status === 401) {
+        handleLogout();
+      }
+      setLoading(false);
+    }
+  }, [token]);
+
+  // Polling for pods
+  usePolling(fetchPods, 10000);
+
+  // Initial fetch
+  useEffect(() => {
+    if (token) {
+      fetchPods();
+    } else {
+      navigate('/login');
+    }
+  }, [token, navigate, fetchPods]);
+
+  // Handlers
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('company');
+    navigate('/login');
+  };
+
+  const handleCreatePod = async (podData) => {
+    setActionLoading(prev => ({ ...prev, create: true }));
+    try {
+      await axios.post(`${API_BASE}/pods`, podData, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      showNotification(`Pod "${podData.name}" created successfully`, 'success');
+      setCreateModalOpen(false);
+      fetchPods();
+    } catch (err) {
+      showNotification(err.response?.data?.detail || 'Failed to create pod', 'error');
+    }
+    setActionLoading(prev => ({ ...prev, create: false }));
+  };
+
+  const handleDeletePod = async (podName) => {
+    if (!window.confirm(`Are you sure you want to delete pod "${podName}"?`)) return;
+    
+    setActionLoading(prev => ({ ...prev, [podName]: true }));
+    try {
+      await axios.delete(`${API_BASE}/pods/${podName}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      showNotification(`Pod "${podName}" deleted successfully`, 'success');
+      fetchPods();
+    } catch (err) {
+      showNotification(err.response?.data?.detail || 'Failed to delete pod', 'error');
+    }
+    setActionLoading(prev => ({ ...prev, [podName]: false }));
+  };
+
+  const handleRestartPod = async (podName) => {
+    setActionLoading(prev => ({ ...prev, [`restart-${podName}`]: true }));
+    try {
+      await axios.post(`${API_BASE}/pods/${podName}/restart`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      showNotification(`Pod "${podName}" restarted successfully`, 'success');
+      fetchPods();
+    } catch (err) {
+      showNotification(err.response?.data?.detail || 'Failed to restart pod', 'error');
+    }
+    setActionLoading(prev => ({ ...prev, [`restart-${podName}`]: false }));
+  };
+
+  const handleViewDetails = (pod) => {
+    setSelectedPod(pod);
+    setDetailModalOpen(true);
+  };
+
+  const handleDeployEusuite = async () => {
+    setActionLoading(prev => ({ ...prev, eusuite: true }));
+    try {
+      await axios.post(`${API_BASE}/eusuite/deploy`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      showNotification('EUSUITE deployment started successfully', 'success');
+      fetchPods();
+    } catch (err) {
+      showNotification(err.response?.data?.detail || 'Failed to deploy EUSUITE', 'error');
+    }
+    setActionLoading(prev => ({ ...prev, eusuite: false }));
+  };
+
+  const handleUndeployEusuite = async () => {
+    if (!window.confirm('Are you sure you want to undeploy all EUSUITE applications?')) return;
+    
+    setActionLoading(prev => ({ ...prev, eusuite: true }));
+    try {
+      await axios.post(`${API_BASE}/eusuite/undeploy`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      showNotification('EUSUITE undeployed successfully', 'success');
+      fetchPods();
+    } catch (err) {
+      showNotification(err.response?.data?.detail || 'Failed to undeploy EUSUITE', 'error');
+    }
+    setActionLoading(prev => ({ ...prev, eusuite: false }));
+  };
+
+  // Sidebar content
+  const sidebarContent = (
+    <Box
+      sx={{
+        width: 260,
+        height: '100%',
+        background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
+        borderRight: '1px solid rgba(99, 102, 241, 0.2)',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      {/* Logo */}
+      <Box sx={{ p: 3, borderBottom: '1px solid rgba(99, 102, 241, 0.2)' }}>
+        <Typography
+          variant="h5"
+          sx={{
+            fontWeight: 700,
+            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+          }}
+        >
+          Shield-SaaS
+        </Typography>
+        <Typography variant="caption" sx={{ color: '#64748b' }}>
+          Kubernetes Platform
+        </Typography>
+      </Box>
+
+      {/* Navigation */}
+      <Box sx={{ flex: 1, py: 2 }}>
+        <List>
+          <ListItem
+            button
+            selected
+            sx={{
+              mx: 1,
+              borderRadius: 2,
+              '&.Mui-selected': {
+                bgcolor: 'rgba(99, 102, 241, 0.15)',
+                '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.2)' },
+              },
+            }}
+          >
+            <ListItemIcon>
+              <DashboardIcon sx={{ color: '#6366f1' }} />
+            </ListItemIcon>
+            <ListItemText 
+              primary="Dashboard" 
+              primaryTypographyProps={{ color: '#f1f5f9', fontWeight: 500 }}
+            />
+          </ListItem>
+          <ListItem
+            button
+            onClick={() => navigate('/monitoring')}
+            sx={{
+              mx: 1,
+              borderRadius: 2,
+              '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.1)' },
+            }}
+          >
+            <ListItemIcon>
+              <TimelineIcon sx={{ color: '#94a3b8' }} />
+            </ListItemIcon>
+            <ListItemText 
+              primary="Monitoring" 
+              primaryTypographyProps={{ color: '#94a3b8' }}
+            />
+          </ListItem>
+        </List>
+      </Box>
+
+      {/* User Info */}
+      <Box sx={{ p: 2, borderTop: '1px solid rgba(99, 102, 241, 0.2)' }}>
+        <Paper
+          sx={{
+            p: 2,
+            bgcolor: 'rgba(15, 23, 42, 0.5)',
+            borderRadius: 2,
+          }}
+        >
+          <Typography variant="body2" sx={{ color: '#e2e8f0', fontWeight: 500 }}>
+            {company || 'Company'}
+          </Typography>
+          <Typography variant="caption" sx={{ color: '#64748b' }}>
+            Active Workspace
+          </Typography>
+        </Paper>
+        <Button
+          fullWidth
+          variant="outlined"
+          startIcon={<LogoutIcon />}
+          onClick={handleLogout}
+          sx={{
+            mt: 2,
+            borderColor: 'rgba(239, 68, 68, 0.3)',
+            color: '#ef4444',
+            '&:hover': {
+              borderColor: '#ef4444',
+              bgcolor: 'rgba(239, 68, 68, 0.1)',
+            },
+          }}
+        >
+          Logout
+        </Button>
+      </Box>
+    </Box>
+  );
+
+  return (
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#0f172a' }}>
+      {/* Sidebar - Desktop */}
+      {!isMobile && (
+        <Box component="nav" sx={{ flexShrink: 0 }}>
+          {sidebarContent}
+        </Box>
+      )}
+
+      {/* Sidebar - Mobile Drawer */}
+      {isMobile && (
+        <Drawer
+          variant="temporary"
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          ModalProps={{ keepMounted: true }}
+          PaperProps={{ sx: { bgcolor: 'transparent', boxShadow: 'none' } }}
+        >
+          {sidebarContent}
+        </Drawer>
+      )}
+
+      {/* Main Content */}
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Top Bar */}
+        <AppBar
+          position="static"
+          elevation={0}
+          sx={{
+            bgcolor: 'transparent',
+            borderBottom: '1px solid rgba(99, 102, 241, 0.2)',
+          }}
+        >
+          <Toolbar>
+            {isMobile && (
+              <IconButton
+                edge="start"
+                onClick={() => setDrawerOpen(true)}
+                sx={{ mr: 2, color: '#94a3b8' }}
+              >
+                <MenuIcon />
+              </IconButton>
+            )}
+            <Typography variant="h6" sx={{ flex: 1, color: '#f1f5f9', fontWeight: 600 }}>
+              Pod Management
+            </Typography>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setCreateModalOpen(true)}
+              sx={{
+                mr: 2,
+                background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+                },
+              }}
+            >
+              New Pod
+            </Button>
+            <IconButton onClick={fetchPods} sx={{ color: '#94a3b8' }}>
+              <RefreshIcon />
+            </IconButton>
+          </Toolbar>
+        </AppBar>
+
+        {/* Content */}
+        <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+              <CircularProgress sx={{ color: '#6366f1' }} />
+            </Box>
+          ) : (
+            <>
+              {/* EUSUITE Section */}
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h6" sx={{ color: '#94a3b8', mb: 2, fontWeight: 500 }}>
+                  EUSUITE Office 365
+                </Typography>
+                {eusuiteDeployed ? (
+                  <EusuiteCard
+                    pods={eusuitePods}
+                    onViewDetails={handleViewDetails}
+                    onUndeploy={handleUndeployEusuite}
+                    isUndeploying={actionLoading.eusuite}
+                  />
+                ) : (
+                  <Card
+                    sx={{
+                      background: 'linear-gradient(145deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.5) 100%)',
+                      border: '1px dashed rgba(99, 102, 241, 0.3)',
+                      borderRadius: 3,
+                    }}
+                  >
+                    <CardContent sx={{ textAlign: 'center', py: 4 }}>
+                      <AppsIcon sx={{ fontSize: 48, color: '#64748b', mb: 2 }} />
+                      <Typography variant="h6" sx={{ color: '#94a3b8', mb: 1 }}>
+                        Deploy EUSUITE Office 365
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: '#64748b', mb: 3 }}>
+                        One-click deployment of Dylan's complete Office 365 suite
+                      </Typography>
+                      <Button
+                        variant="contained"
+                        startIcon={actionLoading.eusuite ? <CircularProgress size={18} /> : <CloudUploadIcon />}
+                        onClick={handleDeployEusuite}
+                        disabled={actionLoading.eusuite}
+                        sx={{
+                          background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                          '&:hover': {
+                            background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+                          },
+                        }}
+                      >
+                        Deploy EUSUITE
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+              </Box>
+
+              {/* Regular Pods Section */}
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                  <Typography variant="h6" sx={{ color: '#94a3b8', fontWeight: 500 }}>
+                    Your Pods
+                  </Typography>
+                  <Chip
+                    label={`${pods.length} pods`}
+                    size="small"
+                    sx={{ bgcolor: 'rgba(99, 102, 241, 0.2)', color: '#a5b4fc' }}
+                  />
+                </Box>
+                
+                {pods.length === 0 ? (
+                  <Paper
+                    sx={{
+                      p: 4,
+                      textAlign: 'center',
+                      bgcolor: 'rgba(30, 41, 59, 0.5)',
+                      border: '1px dashed rgba(99, 102, 241, 0.3)',
+                      borderRadius: 3,
+                    }}
+                  >
+                    <Typography variant="body1" sx={{ color: '#94a3b8' }}>
+                      No pods deployed yet. Click "New Pod" to get started.
+                    </Typography>
+                  </Paper>
+                ) : (
+                  <Grid container spacing={2}>
+                    {pods.map((pod) => (
+                      <Grid item xs={12} sm={6} lg={4} xl={3} key={pod.name}>
+                        <PodCard
+                          pod={pod}
+                          onViewDetails={handleViewDetails}
+                          onDelete={handleDeletePod}
+                          onRestart={handleRestartPod}
+                          isDeleting={actionLoading[pod.name]}
+                        />
+                      </Grid>
+                    ))}
+                  </Grid>
+                )}
+              </Box>
+            </>
+          )}
+        </Box>
+      </Box>
+
+      {/* Modals */}
+      <CreatePodModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onCreate={handleCreatePod}
+        loading={actionLoading.create}
+      />
+      <PodDetailModal
+        open={detailModalOpen}
+        onClose={() => setDetailModalOpen(false)}
+        pod={selectedPod}
+        token={token}
+        onRefresh={fetchPods}
+      />
+
+      {/* Notification Snackbar */}
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={6000}
+        onClose={hideNotification}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert
+          onClose={hideNotification}
+          severity={notification.severity}
+          variant="filled"
+          sx={{ borderRadius: 2 }}
+        >
+          {notification.message}
+        </Alert>
+      </Snackbar>
+    </Box>
+  );
+}
