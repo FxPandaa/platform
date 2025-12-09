@@ -3,7 +3,10 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
-import { POLLING_INTERVAL } from '../theme';
+import { POLLING_INTERVAL, useThemeContext } from '../theme';
+
+// Re-export useThemeContext for convenience
+export { useThemeContext };
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://192.168.154.114:30001";
 
@@ -15,15 +18,39 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://192.168.154.114
  * Poll an API endpoint at regular intervals
  * @param {Function} fetchFn - The fetch function to call
  * @param {number} interval - Polling interval in ms
- * @param {Array} deps - Dependencies array
+ * @param {Object} options - Options: enabled (boolean), skipInitial (boolean)
  */
-export function usePolling(fetchFn, interval = POLLING_INTERVAL, deps = []) {
+export function usePolling(fetchFn, interval = POLLING_INTERVAL, options = {}) {
+  const { enabled = true, skipInitial = false } = options;
+  const savedCallback = useRef(fetchFn);
+  
+  // Remember the latest callback
   useEffect(() => {
-    fetchFn();
-    const timer = setInterval(fetchFn, interval);
-    return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+    savedCallback.current = fetchFn;
+  }, [fetchFn]);
+  
+  useEffect(() => {
+    if (!enabled) return;
+    
+    // Create AbortController for cleanup
+    const controller = new AbortController();
+    
+    // Optionally skip initial call (useful when parent component handles initial fetch)
+    if (!skipInitial) {
+      savedCallback.current({ signal: controller.signal });
+    }
+    
+    // Set up the interval
+    const timer = setInterval(() => {
+      savedCallback.current({ signal: controller.signal });
+    }, interval);
+    
+    // Cleanup on unmount
+    return () => {
+      controller.abort();
+      clearInterval(timer);
+    };
+  }, [interval, enabled, skipInitial]);
 }
 
 // ============================================

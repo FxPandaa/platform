@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -40,10 +40,13 @@ import {
   Collapse,
   useTheme,
   useMediaQuery,
-  Drawer,
-  AppBar,
-  Toolbar,
+  Skeleton,
+  InputAdornment,
+  alpha,
+  Avatar,
   Badge,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -69,19 +72,308 @@ import {
   CloudDownload as CloudDownloadIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
-  Menu as MenuIcon,
-  Dashboard as DashboardIcon,
-  Logout as LogoutIcon,
   Apps as AppsIcon,
   Timeline as TimelineIcon,
-  Notifications as NotificationsIcon,
+  Replay as ReplayIcon,
+  Search as SearchIcon,
+  ViewModule as ViewModuleIcon,
+  ViewList as ViewListIcon,
+  Web as WebIcon,
+  Code as CodeIcon,
+  DataObject as DatabaseIcon,
+  Dns as CacheIcon,
+  Security as SecurityIcon,
+  Analytics as MonitoringIcon,
+  Folder as FilesIcon,
+  Message as MessagingIcon,
+  SmartToy as AIIcon,
+  Stream as StreamingIcon,
 } from '@mui/icons-material';
-import { COLORS, STATUS_COLORS, ANIMATION_DURATION } from './theme';
-import { usePolling, useNotification, usePodActions } from './hooks';
+import { COLORS, STATUS_COLORS, ANIMATION_DURATION, useThemeContext } from './theme';
+import { usePolling, useNotification } from './hooks';
 import StatusBadge from './components/common/StatusBadge';
 import ResourceBar from './components/common/ResourceBar';
+import MainLayout from './components/layout/MainLayout';
 
 const API_BASE = 'http://192.168.154.114:30001';
+
+// ============================================
+// APPLICATION CATALOG - Rich deployment options
+// ============================================
+
+const APPLICATION_CATALOG = {
+  categories: [
+    { id: 'all', name: 'All Applications', icon: AppsIcon },
+    { id: 'web', name: 'Web Servers', icon: WebIcon },
+    { id: 'database', name: 'Databases', icon: DatabaseIcon },
+    { id: 'cache', name: 'Cache & Queue', icon: CacheIcon },
+    { id: 'monitoring', name: 'Monitoring', icon: MonitoringIcon },
+    { id: 'security', name: 'Security', icon: SecurityIcon },
+    { id: 'files', name: 'File Storage', icon: FilesIcon },
+    { id: 'messaging', name: 'Messaging', icon: MessagingIcon },
+    { id: 'ai', name: 'AI & ML', icon: AIIcon },
+    { id: 'streaming', name: 'Streaming', icon: StreamingIcon },
+  ],
+  
+  applications: [
+    // Web Servers
+    {
+      id: 'nginx',
+      name: 'NGINX',
+      image: 'nginx:latest',
+      category: 'web',
+      description: 'High-performance web server and reverse proxy',
+      port: 80,
+      color: '#009639',
+      popular: true,
+      resources: { cpu: '100m', memory: '128Mi' },
+    },
+    {
+      id: 'apache',
+      name: 'Apache HTTP',
+      image: 'httpd:latest',
+      category: 'web',
+      description: 'Classic Apache HTTP Server',
+      port: 80,
+      color: '#D22128',
+      resources: { cpu: '100m', memory: '128Mi' },
+    },
+    {
+      id: 'caddy',
+      name: 'Caddy',
+      image: 'caddy:latest',
+      category: 'web',
+      description: 'Modern web server with automatic HTTPS',
+      port: 80,
+      color: '#1F88C9',
+      resources: { cpu: '100m', memory: '64Mi' },
+    },
+    {
+      id: 'traefik',
+      name: 'Traefik',
+      image: 'traefik:latest',
+      category: 'web',
+      description: 'Cloud-native edge router and load balancer',
+      port: 80,
+      color: '#24A1C1',
+      resources: { cpu: '200m', memory: '256Mi' },
+    },
+    
+    // Databases
+    {
+      id: 'postgres',
+      name: 'PostgreSQL',
+      image: 'postgres:15',
+      category: 'database',
+      description: 'Powerful open-source relational database',
+      port: 5432,
+      color: '#336791',
+      popular: true,
+      resources: { cpu: '250m', memory: '512Mi' },
+      env_defaults: [
+        { name: 'POSTGRES_PASSWORD', value: 'changeme' },
+        { name: 'POSTGRES_DB', value: 'app' },
+      ],
+    },
+    {
+      id: 'mysql',
+      name: 'MySQL',
+      image: 'mysql:8',
+      category: 'database',
+      description: 'Popular open-source relational database',
+      port: 3306,
+      color: '#4479A1',
+      popular: true,
+      resources: { cpu: '250m', memory: '512Mi' },
+      env_defaults: [{ name: 'MYSQL_ROOT_PASSWORD', value: 'changeme' }],
+    },
+    {
+      id: 'mariadb',
+      name: 'MariaDB',
+      image: 'mariadb:latest',
+      category: 'database',
+      description: 'Community-developed MySQL fork',
+      port: 3306,
+      color: '#003545',
+      resources: { cpu: '250m', memory: '512Mi' },
+      env_defaults: [{ name: 'MARIADB_ROOT_PASSWORD', value: 'changeme' }],
+    },
+    {
+      id: 'mongodb',
+      name: 'MongoDB',
+      image: 'mongo:latest',
+      category: 'database',
+      description: 'Document-oriented NoSQL database',
+      port: 27017,
+      color: '#47A248',
+      popular: true,
+      resources: { cpu: '250m', memory: '512Mi' },
+    },
+    {
+      id: 'mssql',
+      name: 'SQL Server',
+      image: 'mcr.microsoft.com/mssql/server:2022-latest',
+      category: 'database',
+      description: 'Microsoft SQL Server database',
+      port: 1433,
+      color: '#CC2927',
+      resources: { cpu: '500m', memory: '2Gi' },
+      env_defaults: [
+        { name: 'ACCEPT_EULA', value: 'Y' },
+        { name: 'SA_PASSWORD', value: 'YourStrong@Passw0rd' },
+      ],
+    },
+    
+    // Cache & Queue
+    {
+      id: 'redis',
+      name: 'Redis',
+      image: 'redis:latest',
+      category: 'cache',
+      description: 'In-memory data store and cache',
+      port: 6379,
+      color: '#DC382D',
+      popular: true,
+      resources: { cpu: '100m', memory: '128Mi' },
+    },
+    {
+      id: 'memcached',
+      name: 'Memcached',
+      image: 'memcached:latest',
+      category: 'cache',
+      description: 'High-performance memory caching system',
+      port: 11211,
+      color: '#7B8F9C',
+      resources: { cpu: '100m', memory: '128Mi' },
+    },
+    {
+      id: 'rabbitmq',
+      name: 'RabbitMQ',
+      image: 'rabbitmq:3-management',
+      category: 'cache',
+      description: 'Message broker with management UI',
+      port: 15672,
+      color: '#FF6600',
+      resources: { cpu: '200m', memory: '256Mi' },
+    },
+    
+    // Monitoring
+    {
+      id: 'prometheus',
+      name: 'Prometheus',
+      image: 'prom/prometheus:latest',
+      category: 'monitoring',
+      description: 'Metrics collection and alerting',
+      port: 9090,
+      color: '#E6522C',
+      resources: { cpu: '200m', memory: '512Mi' },
+    },
+    {
+      id: 'grafana',
+      name: 'Grafana',
+      image: 'grafana/grafana:latest',
+      category: 'monitoring',
+      description: 'Analytics and monitoring dashboards',
+      port: 3000,
+      color: '#F46800',
+      popular: true,
+      resources: { cpu: '100m', memory: '256Mi' },
+    },
+    {
+      id: 'influxdb',
+      name: 'InfluxDB',
+      image: 'influxdb:latest',
+      category: 'monitoring',
+      description: 'Time-series database for metrics',
+      port: 8086,
+      color: '#22ADF6',
+      resources: { cpu: '200m', memory: '512Mi' },
+    },
+    
+    // File Storage
+    {
+      id: 'minio',
+      name: 'MinIO',
+      image: 'minio/minio:latest',
+      category: 'files',
+      description: 'S3-compatible object storage',
+      port: 9000,
+      color: '#C72C48',
+      resources: { cpu: '200m', memory: '512Mi' },
+      env_defaults: [
+        { name: 'MINIO_ROOT_USER', value: 'admin' },
+        { name: 'MINIO_ROOT_PASSWORD', value: 'changeme123' },
+      ],
+    },
+    {
+      id: 'nextcloud',
+      name: 'Nextcloud',
+      image: 'nextcloud:latest',
+      category: 'files',
+      description: 'Self-hosted file sync and share',
+      port: 80,
+      color: '#0082C9',
+      resources: { cpu: '200m', memory: '512Mi' },
+    },
+    
+    // Messaging
+    {
+      id: 'rocketchat',
+      name: 'Rocket.Chat',
+      image: 'rocket.chat:latest',
+      category: 'messaging',
+      description: 'Open-source team communication',
+      port: 3000,
+      color: '#F5455C',
+      resources: { cpu: '200m', memory: '512Mi' },
+    },
+    {
+      id: 'mattermost',
+      name: 'Mattermost',
+      image: 'mattermost/mattermost-team-edition:latest',
+      category: 'messaging',
+      description: 'Enterprise messaging platform',
+      port: 8065,
+      color: '#0058CC',
+      resources: { cpu: '200m', memory: '512Mi' },
+    },
+    
+    // Development
+    {
+      id: 'node',
+      name: 'Node.js',
+      image: 'node:lts',
+      category: 'web',
+      description: 'JavaScript runtime for server apps',
+      port: 3000,
+      color: '#339933',
+      resources: { cpu: '100m', memory: '256Mi' },
+    },
+    {
+      id: 'python',
+      name: 'Python',
+      image: 'python:3.11',
+      category: 'web',
+      description: 'Python runtime environment',
+      port: 8000,
+      color: '#3776AB',
+      resources: { cpu: '100m', memory: '256Mi' },
+    },
+    
+    // Custom
+    {
+      id: 'custom',
+      name: 'Custom Image',
+      image: '',
+      category: 'all',
+      description: 'Deploy any Docker image',
+      port: 80,
+      color: '#6366F1',
+      isCustom: true,
+      resources: { cpu: '100m', memory: '128Mi' },
+    },
+  ],
+};
 
 // Tab Panel Component
 function TabPanel({ children, value, index, ...other }) {
@@ -758,8 +1050,23 @@ const PodDetailModal = ({
   );
 };
 
-// Create Pod Modal Component
+// ============================================
+// ENHANCED CREATE POD MODAL
+// With rich application catalog, search, and categories
+// ============================================
+
 const CreatePodModal = ({ open, onClose, onCreate, loading }) => {
+  const theme = useTheme();
+  const { colors } = useThemeContext();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
+  // State
+  const [step, setStep] = useState(1); // 1: Select App, 2: Configure
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedApp, setSelectedApp] = useState(null);
+  const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
+  
   const [podData, setPodData] = useState({
     name: '',
     image: '',
@@ -771,6 +1078,65 @@ const CreatePodModal = ({ open, onClose, onCreate, loading }) => {
   });
   const [newEnvVar, setNewEnvVar] = useState({ name: '', value: '' });
 
+  // Filter applications based on search and category
+  const filteredApps = useMemo(() => {
+    return APPLICATION_CATALOG.applications.filter(app => {
+      const matchesCategory = selectedCategory === 'all' || app.category === selectedCategory;
+      const matchesSearch = !searchQuery || 
+        app.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        app.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        app.image.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesCategory && matchesSearch;
+    });
+  }, [selectedCategory, searchQuery]);
+
+  // Popular apps (shown at top when no filter)
+  const popularApps = useMemo(() => {
+    return APPLICATION_CATALOG.applications.filter(app => app.popular);
+  }, []);
+
+  // Reset state when modal opens/closes
+  useEffect(() => {
+    if (open) {
+      setStep(1);
+      setSelectedCategory('all');
+      setSearchQuery('');
+      setSelectedApp(null);
+      setPodData({
+        name: '',
+        image: '',
+        port: '',
+        replicas: 1,
+        cpu_limit: '100m',
+        memory_limit: '128Mi',
+        env_vars: [],
+      });
+    }
+  }, [open]);
+
+  // Handle app selection
+  const handleSelectApp = (app) => {
+    setSelectedApp(app);
+    setPodData(prev => ({
+      ...prev,
+      image: app.image,
+      port: app.port?.toString() || '',
+      cpu_limit: app.resources?.cpu || '100m',
+      memory_limit: app.resources?.memory || '128Mi',
+      env_vars: app.env_defaults || [],
+    }));
+    
+    if (!app.isCustom) {
+      // Auto-generate name based on app
+      const baseName = app.id.toLowerCase().replace(/[^a-z0-9]/g, '-');
+      const randomSuffix = Math.random().toString(36).substring(2, 6);
+      setPodData(prev => ({ ...prev, name: `${baseName}-${randomSuffix}` }));
+    }
+    
+    setStep(2);
+  };
+
+  // Handle form submission
   const handleSubmit = () => {
     if (!podData.name || !podData.image) return;
     onCreate({
@@ -779,6 +1145,7 @@ const CreatePodModal = ({ open, onClose, onCreate, loading }) => {
     });
   };
 
+  // Environment variable helpers
   const addEnvVar = () => {
     if (newEnvVar.name && newEnvVar.value) {
       setPodData(prev => ({
@@ -796,176 +1163,582 @@ const CreatePodModal = ({ open, onClose, onCreate, loading }) => {
     }));
   };
 
+  // Application Card Component
+  const AppCard = ({ app }) => (
+    <Card
+      onClick={() => handleSelectApp(app)}
+      sx={{
+        cursor: 'pointer',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        bgcolor: alpha(colors.bgElevated, 0.8),
+        border: `1px solid ${colors.border}`,
+        transition: 'all 0.2s ease',
+        '&:hover': {
+          transform: 'translateY(-2px)',
+          borderColor: app.color || colors.primary,
+          boxShadow: `0 8px 24px ${alpha(app.color || colors.primary, 0.2)}`,
+        },
+      }}
+    >
+      <CardContent sx={{ flex: 1, p: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 1 }}>
+          <Avatar
+            sx={{
+              width: 40,
+              height: 40,
+              bgcolor: alpha(app.color || colors.primary, 0.15),
+              color: app.color || colors.primary,
+              fontSize: '1rem',
+              fontWeight: 700,
+            }}
+          >
+            {app.name.substring(0, 2).toUpperCase()}
+          </Avatar>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Typography 
+                variant="subtitle1" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: colors.textPrimary,
+                  lineHeight: 1.2,
+                }}
+              >
+                {app.name}
+              </Typography>
+              {app.popular && (
+                <Chip
+                  label="Popular"
+                  size="small"
+                  sx={{
+                    height: 18,
+                    fontSize: '0.65rem',
+                    bgcolor: alpha(colors.success, 0.15),
+                    color: colors.success,
+                  }}
+                />
+              )}
+            </Box>
+            <Typography 
+              variant="caption" 
+              sx={{ 
+                color: colors.textSecondary,
+                display: 'block',
+              }}
+            >
+              {app.image || 'Custom image'}
+            </Typography>
+          </Box>
+        </Box>
+        <Typography 
+          variant="body2" 
+          sx={{ 
+            color: colors.textSecondary,
+            fontSize: '0.8rem',
+            lineHeight: 1.4,
+          }}
+        >
+          {app.description}
+        </Typography>
+      </CardContent>
+      {app.port && (
+        <Box 
+          sx={{ 
+            px: 2, 
+            py: 1, 
+            borderTop: `1px solid ${colors.border}`,
+            display: 'flex',
+            gap: 1,
+          }}
+        >
+          <Chip 
+            label={`Port ${app.port}`} 
+            size="small"
+            sx={{ 
+              height: 20,
+              fontSize: '0.7rem',
+              bgcolor: alpha(colors.info, 0.1),
+              color: colors.info,
+            }}
+          />
+          {app.resources && (
+            <Chip 
+              label={app.resources.memory} 
+              size="small"
+              sx={{ 
+                height: 20,
+                fontSize: '0.7rem',
+                bgcolor: alpha(colors.memory, 0.1),
+                color: colors.memory,
+              }}
+            />
+          )}
+        </Box>
+      )}
+    </Card>
+  );
+
+  // Application List Item Component
+  const AppListItem = ({ app }) => (
+    <ListItem
+      button
+      onClick={() => handleSelectApp(app)}
+      sx={{
+        borderRadius: 2,
+        mb: 0.5,
+        border: `1px solid ${colors.border}`,
+        '&:hover': {
+          bgcolor: alpha(colors.primary, 0.1),
+          borderColor: app.color || colors.primary,
+        },
+      }}
+    >
+      <ListItemIcon>
+        <Avatar
+          sx={{
+            width: 36,
+            height: 36,
+            bgcolor: alpha(app.color || colors.primary, 0.15),
+            color: app.color || colors.primary,
+            fontSize: '0.85rem',
+            fontWeight: 700,
+          }}
+        >
+          {app.name.substring(0, 2).toUpperCase()}
+        </Avatar>
+      </ListItemIcon>
+      <ListItemText
+        primary={
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <span>{app.name}</span>
+            {app.popular && (
+              <Chip
+                label="Popular"
+                size="small"
+                sx={{
+                  height: 16,
+                  fontSize: '0.6rem',
+                  bgcolor: alpha(colors.success, 0.15),
+                  color: colors.success,
+                }}
+              />
+            )}
+          </Box>
+        }
+        secondary={app.description}
+        primaryTypographyProps={{ fontWeight: 500, color: colors.textPrimary }}
+        secondaryTypographyProps={{ fontSize: '0.75rem' }}
+      />
+      <Chip 
+        label={app.image || 'Custom'} 
+        size="small"
+        sx={{ 
+          maxWidth: 120,
+          fontSize: '0.7rem',
+          bgcolor: alpha(colors.bgDefault, 0.5),
+        }}
+      />
+    </ListItem>
+  );
+
   return (
     <Dialog
       open={open}
       onClose={onClose}
-      maxWidth="sm"
+      maxWidth="md"
       fullWidth
       PaperProps={{
         sx: {
-          bgcolor: '#1e293b',
+          bgcolor: colors.bgPaper,
           backgroundImage: 'none',
           borderRadius: 3,
-          border: '1px solid rgba(99, 102, 241, 0.2)',
+          border: `1px solid ${colors.border}`,
+          maxHeight: '85vh',
         },
       }}
     >
-      <DialogTitle sx={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        gap: 2,
-        borderBottom: '1px solid rgba(99, 102, 241, 0.2)',
-      }}>
-        <AddIcon sx={{ color: '#6366f1' }} />
-        <Typography variant="h6" sx={{ color: '#f1f5f9' }}>
-          Deploy New Pod
-        </Typography>
+      {/* Header */}
+      <DialogTitle 
+        sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between',
+          borderBottom: `1px solid ${colors.border}`,
+          pb: 2,
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Avatar sx={{ bgcolor: alpha(colors.primary, 0.15), color: colors.primary }}>
+            <AddIcon />
+          </Avatar>
+          <Box>
+            <Typography variant="h6" sx={{ color: colors.textPrimary, fontWeight: 600 }}>
+              {step === 1 ? 'Select Application' : 'Configure Deployment'}
+            </Typography>
+            <Typography variant="caption" sx={{ color: colors.textSecondary }}>
+              {step === 1 
+                ? 'Choose from our catalog or deploy a custom image' 
+                : `Deploying ${selectedApp?.name || 'Custom Application'}`
+              }
+            </Typography>
+          </Box>
+        </Box>
+        <IconButton onClick={onClose} sx={{ color: colors.textSecondary }}>
+          <CloseIcon />
+        </IconButton>
       </DialogTitle>
 
-      <DialogContent sx={{ mt: 2 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12}>
-            <TextField
-              fullWidth
-              label="Pod Name"
-              value={podData.name}
-              onChange={(e) => setPodData(prev => ({ ...prev, name: e.target.value }))}
-              placeholder="my-app"
-              InputProps={{
-                sx: { bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2 },
+      <DialogContent sx={{ p: 0 }}>
+        {/* Step 1: Application Selection */}
+        {step === 1 && (
+          <Box sx={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', height: 500 }}>
+            {/* Category Sidebar */}
+            <Box
+              sx={{
+                width: isMobile ? '100%' : 200,
+                borderRight: isMobile ? 'none' : `1px solid ${colors.border}`,
+                borderBottom: isMobile ? `1px solid ${colors.border}` : 'none',
+                p: 2,
+                overflowY: 'auto',
               }}
-            />
-          </Grid>
-          <Grid item xs={12}>
-            <TextField
-              fullWidth
-              label="Docker Image"
-              value={podData.image}
-              onChange={(e) => setPodData(prev => ({ ...prev, image: e.target.value }))}
-              placeholder="nginx:latest"
-              InputProps={{
-                sx: { bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2 },
-              }}
-            />
-          </Grid>
-          <Grid item xs={6}>
-            <TextField
-              fullWidth
-              label="Port"
-              type="number"
-              value={podData.port}
-              onChange={(e) => setPodData(prev => ({ ...prev, port: e.target.value }))}
-              placeholder="80"
-              InputProps={{
-                sx: { bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2 },
-              }}
-            />
-          </Grid>
-          <Grid item xs={6}>
-            <TextField
-              fullWidth
-              label="Replicas"
-              type="number"
-              value={podData.replicas}
-              onChange={(e) => setPodData(prev => ({ ...prev, replicas: parseInt(e.target.value) || 1 }))}
-              InputProps={{
-                sx: { bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2 },
-                inputProps: { min: 1, max: 10 },
-              }}
-            />
-          </Grid>
-          <Grid item xs={6}>
-            <TextField
-              fullWidth
-              label="CPU Limit"
-              value={podData.cpu_limit}
-              onChange={(e) => setPodData(prev => ({ ...prev, cpu_limit: e.target.value }))}
-              placeholder="100m"
-              InputProps={{
-                sx: { bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2 },
-              }}
-            />
-          </Grid>
-          <Grid item xs={6}>
-            <TextField
-              fullWidth
-              label="Memory Limit"
-              value={podData.memory_limit}
-              onChange={(e) => setPodData(prev => ({ ...prev, memory_limit: e.target.value }))}
-              placeholder="128Mi"
-              InputProps={{
-                sx: { bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2 },
-              }}
-            />
-          </Grid>
-
-          {/* Environment Variables */}
-          <Grid item xs={12}>
-            <Typography variant="subtitle2" sx={{ color: '#94a3b8', mb: 1 }}>
-              Environment Variables
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-              <TextField
-                size="small"
-                placeholder="NAME"
-                value={newEnvVar.name}
-                onChange={(e) => setNewEnvVar(prev => ({ ...prev, name: e.target.value }))}
-                sx={{ flex: 1 }}
-                InputProps={{
-                  sx: { bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 1 },
-                }}
-              />
-              <TextField
-                size="small"
-                placeholder="VALUE"
-                value={newEnvVar.value}
-                onChange={(e) => setNewEnvVar(prev => ({ ...prev, value: e.target.value }))}
-                sx={{ flex: 1 }}
-                InputProps={{
-                  sx: { bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 1 },
-                }}
-              />
-              <IconButton onClick={addEnvVar} sx={{ color: '#6366f1' }}>
-                <AddIcon />
-              </IconButton>
+            >
+              <Typography variant="overline" sx={{ color: colors.textSecondary, px: 1 }}>
+                Categories
+              </Typography>
+              <List dense sx={{ py: 1 }}>
+                {APPLICATION_CATALOG.categories.map((cat) => {
+                  const Icon = cat.icon;
+                  const isSelected = selectedCategory === cat.id;
+                  const count = cat.id === 'all' 
+                    ? APPLICATION_CATALOG.applications.length 
+                    : APPLICATION_CATALOG.applications.filter(a => a.category === cat.id).length;
+                  
+                  return (
+                    <ListItem
+                      key={cat.id}
+                      button
+                      selected={isSelected}
+                      onClick={() => setSelectedCategory(cat.id)}
+                      sx={{
+                        borderRadius: 1.5,
+                        mb: 0.5,
+                        py: 0.75,
+                        '&.Mui-selected': {
+                          bgcolor: alpha(colors.primary, 0.15),
+                          '&:hover': { bgcolor: alpha(colors.primary, 0.2) },
+                        },
+                      }}
+                    >
+                      <ListItemIcon sx={{ minWidth: 32 }}>
+                        <Icon 
+                          fontSize="small" 
+                          sx={{ color: isSelected ? colors.primary : colors.textSecondary }} 
+                        />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={cat.name}
+                        primaryTypographyProps={{
+                          fontSize: '0.85rem',
+                          fontWeight: isSelected ? 600 : 400,
+                          color: isSelected ? colors.textPrimary : colors.textSecondary,
+                        }}
+                      />
+                      <Chip
+                        label={count}
+                        size="small"
+                        sx={{
+                          height: 20,
+                          minWidth: 24,
+                          fontSize: '0.7rem',
+                          bgcolor: alpha(colors.bgDefault, 0.5),
+                        }}
+                      />
+                    </ListItem>
+                  );
+                })}
+              </List>
             </Box>
-            {podData.env_vars.map((env, index) => (
-              <Chip
-                key={index}
-                label={`${env.name}=${env.value}`}
-                onDelete={() => removeEnvVar(index)}
-                size="small"
-                sx={{
-                  mr: 0.5,
-                  mb: 0.5,
-                  bgcolor: 'rgba(99, 102, 241, 0.2)',
-                  color: '#a5b4fc',
+
+            {/* Application Grid */}
+            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              {/* Search and View Toggle */}
+              <Box 
+                sx={{ 
+                  p: 2, 
+                  borderBottom: `1px solid ${colors.border}`,
+                  display: 'flex',
+                  gap: 2,
+                  alignItems: 'center',
                 }}
-              />
-            ))}
-          </Grid>
-        </Grid>
+              >
+                <TextField
+                  size="small"
+                  placeholder="Search applications..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  sx={{ flex: 1 }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon sx={{ color: colors.textSecondary }} />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                <ToggleButtonGroup
+                  value={viewMode}
+                  exclusive
+                  onChange={(e, v) => v && setViewMode(v)}
+                  size="small"
+                >
+                  <ToggleButton value="grid">
+                    <ViewModuleIcon fontSize="small" />
+                  </ToggleButton>
+                  <ToggleButton value="list">
+                    <ViewListIcon fontSize="small" />
+                  </ToggleButton>
+                </ToggleButtonGroup>
+              </Box>
+
+              {/* Applications List/Grid */}
+              <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+                {/* Popular Apps Section (only when no filter) */}
+                {selectedCategory === 'all' && !searchQuery && (
+                  <Box sx={{ mb: 3 }}>
+                    <Typography 
+                      variant="subtitle2" 
+                      sx={{ 
+                        color: colors.textSecondary, 
+                        mb: 1.5,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
+                      }}
+                    >
+                      <CheckCircleIcon fontSize="small" sx={{ color: colors.success }} />
+                      Popular Applications
+                    </Typography>
+                    <Grid container spacing={2}>
+                      {popularApps.slice(0, 4).map((app) => (
+                        <Grid item xs={12} sm={6} md={3} key={app.id}>
+                          <AppCard app={app} />
+                        </Grid>
+                      ))}
+                    </Grid>
+                    <Divider sx={{ my: 2 }} />
+                  </Box>
+                )}
+
+                {/* All Filtered Apps */}
+                {viewMode === 'grid' ? (
+                  <Grid container spacing={2}>
+                    {filteredApps.map((app) => (
+                      <Grid item xs={12} sm={6} md={4} key={app.id}>
+                        <AppCard app={app} />
+                      </Grid>
+                    ))}
+                  </Grid>
+                ) : (
+                  <List>
+                    {filteredApps.map((app) => (
+                      <AppListItem key={app.id} app={app} />
+                    ))}
+                  </List>
+                )}
+
+                {filteredApps.length === 0 && (
+                  <Box sx={{ textAlign: 'center', py: 4 }}>
+                    <Typography color="text.secondary">
+                      No applications found matching "{searchQuery}"
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            </Box>
+          </Box>
+        )}
+
+        {/* Step 2: Configuration */}
+        {step === 2 && (
+          <Box sx={{ p: 3 }}>
+            {/* Selected App Info */}
+            {selectedApp && !selectedApp.isCustom && (
+              <Paper 
+                sx={{ 
+                  p: 2, 
+                  mb: 3, 
+                  bgcolor: alpha(selectedApp.color || colors.primary, 0.1),
+                  border: `1px solid ${alpha(selectedApp.color || colors.primary, 0.3)}`,
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Avatar
+                    sx={{
+                      width: 48,
+                      height: 48,
+                      bgcolor: alpha(selectedApp.color || colors.primary, 0.2),
+                      color: selectedApp.color || colors.primary,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {selectedApp.name.substring(0, 2).toUpperCase()}
+                  </Avatar>
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      {selectedApp.name}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {selectedApp.description}
+                    </Typography>
+                  </Box>
+                </Box>
+              </Paper>
+            )}
+
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Pod Name"
+                  value={podData.name}
+                  onChange={(e) => setPodData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="my-app"
+                  helperText="Lowercase letters, numbers, and hyphens only"
+                />
+              </Grid>
+              
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Docker Image"
+                  value={podData.image}
+                  onChange={(e) => setPodData(prev => ({ ...prev, image: e.target.value }))}
+                  placeholder="nginx:latest"
+                  disabled={selectedApp && !selectedApp.isCustom}
+                />
+              </Grid>
+              
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Port"
+                  type="number"
+                  value={podData.port}
+                  onChange={(e) => setPodData(prev => ({ ...prev, port: e.target.value }))}
+                  placeholder="80"
+                />
+              </Grid>
+              
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Replicas"
+                  type="number"
+                  value={podData.replicas}
+                  onChange={(e) => setPodData(prev => ({ ...prev, replicas: parseInt(e.target.value) || 1 }))}
+                  inputProps={{ min: 1, max: 10 }}
+                />
+              </Grid>
+              
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="CPU Limit"
+                  value={podData.cpu_limit}
+                  onChange={(e) => setPodData(prev => ({ ...prev, cpu_limit: e.target.value }))}
+                  placeholder="100m"
+                />
+              </Grid>
+              
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Memory Limit"
+                  value={podData.memory_limit}
+                  onChange={(e) => setPodData(prev => ({ ...prev, memory_limit: e.target.value }))}
+                  placeholder="128Mi"
+                />
+              </Grid>
+
+              {/* Environment Variables */}
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" sx={{ color: colors.textSecondary, mb: 1 }}>
+                  Environment Variables
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+                  <TextField
+                    size="small"
+                    placeholder="NAME"
+                    value={newEnvVar.name}
+                    onChange={(e) => setNewEnvVar(prev => ({ ...prev, name: e.target.value }))}
+                    sx={{ flex: 1 }}
+                  />
+                  <TextField
+                    size="small"
+                    placeholder="VALUE"
+                    value={newEnvVar.value}
+                    onChange={(e) => setNewEnvVar(prev => ({ ...prev, value: e.target.value }))}
+                    sx={{ flex: 1 }}
+                  />
+                  <IconButton onClick={addEnvVar} sx={{ color: colors.primary }}>
+                    <AddIcon />
+                  </IconButton>
+                </Box>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {podData.env_vars.map((env, index) => (
+                    <Chip
+                      key={index}
+                      label={`${env.name}=${env.value}`}
+                      onDelete={() => removeEnvVar(index)}
+                      size="small"
+                      sx={{
+                        bgcolor: alpha(colors.primary, 0.15),
+                        color: colors.primary,
+                      }}
+                    />
+                  ))}
+                </Box>
+              </Grid>
+            </Grid>
+          </Box>
+        )}
       </DialogContent>
 
-      <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(99, 102, 241, 0.2)' }}>
-        <Button onClick={onClose} sx={{ color: '#94a3b8' }}>
-          Cancel
-        </Button>
-        <Button
-          variant="contained"
-          onClick={handleSubmit}
-          disabled={loading || !podData.name || !podData.image}
-          startIcon={loading ? <CircularProgress size={18} /> : <AddIcon />}
-          sx={{
-            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-            '&:hover': {
-              background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
-            },
-          }}
-        >
-          Deploy Pod
-        </Button>
+      {/* Footer */}
+      <DialogActions 
+        sx={{ 
+          p: 2, 
+          borderTop: `1px solid ${colors.border}`,
+          justifyContent: 'space-between',
+        }}
+      >
+        <Box>
+          {step === 2 && (
+            <Button 
+              onClick={() => setStep(1)} 
+              startIcon={<ExpandLessIcon sx={{ transform: 'rotate(-90deg)' }} />}
+            >
+              Back to Catalog
+            </Button>
+          )}
+        </Box>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button onClick={onClose} sx={{ color: colors.textSecondary }}>
+            Cancel
+          </Button>
+          {step === 2 && (
+            <Button
+              variant="contained"
+              onClick={handleSubmit}
+              disabled={loading || !podData.name || !podData.image}
+              startIcon={loading ? <CircularProgress size={18} /> : <CloudUploadIcon />}
+            >
+              Deploy
+            </Button>
+          )}
+        </Box>
       </DialogActions>
     </Dialog>
   );
@@ -982,7 +1755,6 @@ export default function Dashboard() {
   const [company] = useState(() => localStorage.getItem('company'));
   
   // UI State
-  const [drawerOpen, setDrawerOpen] = useState(!isMobile);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedPod, setSelectedPod] = useState(null);
@@ -990,6 +1762,7 @@ export default function Dashboard() {
   // Data State
   const [pods, setPods] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [eusuitePods, setEusuitePods] = useState([]);
   const [eusuiteDeployed, setEusuiteDeployed] = useState(false);
   
@@ -999,63 +1772,90 @@ export default function Dashboard() {
   // Notification State
   const { notification, showNotification, hideNotification } = useNotification();
 
-  // Fetch pods
+  // Logout handler - MUST be defined before fetchPods uses it
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('company');
+    navigate('/login');
+  }, [navigate]);
+
+  // Fetch pods with detailed logging
   const fetchPods = useCallback(async () => {
-    if (!token) return;
+    if (!token) {
+      console.log('[Dashboard] No token found, redirecting to login');
+      navigate('/login');
+      return;
+    }
+    
+    console.log('[Dashboard] Fetching pods...');
+    
     try {
       const response = await axios.get(`${API_BASE}/pods`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const allPods = response.data.pods || [];
+      
+      console.log('[Dashboard] API Response:', response.data);
+      
+      // Handle both { pods: [...] } and [...] response structures
+      const allPods = Array.isArray(response.data) 
+        ? response.data 
+        : (response.data.pods || []);
+      
+      console.log('[Dashboard] Parsed pods array:', allPods);
+      console.log('[Dashboard] Number of pods:', allPods.length);
       
       // Separate EUSUITE pods
       const euPods = allPods.filter(p => 
-        p.name.startsWith('eusuite-') || 
-        p.name.startsWith('eumail-') || 
-        p.name.startsWith('eucloud-') || 
-        p.name.startsWith('eutype-') || 
-        p.name.startsWith('eugroups-') || 
-        p.name.startsWith('euadmin-')
+        p.name?.startsWith('eusuite-') || 
+        p.name?.startsWith('eumail-') || 
+        p.name?.startsWith('eucloud-') || 
+        p.name?.startsWith('eutype-') || 
+        p.name?.startsWith('eugroups-') || 
+        p.name?.startsWith('euadmin-')
       );
       const regularPods = allPods.filter(p => 
-        !p.name.startsWith('eusuite-') && 
-        !p.name.startsWith('eumail-') && 
-        !p.name.startsWith('eucloud-') && 
-        !p.name.startsWith('eutype-') && 
-        !p.name.startsWith('eugroups-') && 
-        !p.name.startsWith('euadmin-')
+        !p.name?.startsWith('eusuite-') && 
+        !p.name?.startsWith('eumail-') && 
+        !p.name?.startsWith('eucloud-') && 
+        !p.name?.startsWith('eutype-') && 
+        !p.name?.startsWith('eugroups-') && 
+        !p.name?.startsWith('euadmin-')
       );
+      
+      console.log('[Dashboard] Regular pods:', regularPods.length);
+      console.log('[Dashboard] EUSUITE pods:', euPods.length);
       
       setPods(regularPods);
       setEusuitePods(euPods);
       setEusuiteDeployed(euPods.length > 0);
+      setError(null);
       setLoading(false);
     } catch (err) {
+      console.error('[Dashboard] Error fetching pods:', err);
+      console.error('[Dashboard] Error response:', err.response?.data);
+      
       if (err.response?.status === 401) {
+        console.log('[Dashboard] 401 Unauthorized, logging out');
         handleLogout();
+      } else {
+        setError(err.response?.data?.detail || 'Failed to fetch pods');
       }
       setLoading(false);
     }
-  }, [token]);
+  }, [token, navigate, handleLogout]);
 
-  // Polling for pods
-  usePolling(fetchPods, 10000);
+  // Polling for pods - every 5 seconds, skip initial since useEffect handles it
+  usePolling(fetchPods, 5000, { enabled: !!token, skipInitial: true });
 
   // Initial fetch
   useEffect(() => {
+    console.log('[Dashboard] Component mounted, token:', !!token);
     if (token) {
       fetchPods();
     } else {
       navigate('/login');
     }
   }, [token, navigate, fetchPods]);
-
-  // Handlers
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('company');
-    navigate('/login');
-  };
 
   const handleCreatePod = async (podData) => {
     setActionLoading(prev => ({ ...prev, create: true }));
@@ -1137,284 +1937,199 @@ export default function Dashboard() {
     setActionLoading(prev => ({ ...prev, eusuite: false }));
   };
 
-  // Sidebar content
-  const sidebarContent = (
-    <Box
-      sx={{
-        width: 260,
-        height: '100%',
-        background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
-        borderRight: '1px solid rgba(99, 102, 241, 0.2)',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      {/* Logo */}
-      <Box sx={{ p: 3, borderBottom: '1px solid rgba(99, 102, 241, 0.2)' }}>
-        <Typography
-          variant="h5"
-          sx={{
-            fontWeight: 700,
-            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-          }}
-        >
-          Shield-SaaS
-        </Typography>
-        <Typography variant="caption" sx={{ color: '#64748b' }}>
-          Kubernetes Platform
-        </Typography>
-      </Box>
+  // Retry handler for error state
+  const handleRetry = () => {
+    setError(null);
+    setLoading(true);
+    fetchPods();
+  };
 
-      {/* Navigation */}
-      <Box sx={{ flex: 1, py: 2 }}>
-        <List>
-          <ListItem
-            button
-            selected
-            sx={{
-              mx: 1,
-              borderRadius: 2,
-              '&.Mui-selected': {
-                bgcolor: 'rgba(99, 102, 241, 0.15)',
-                '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.2)' },
-              },
-            }}
-          >
-            <ListItemIcon>
-              <DashboardIcon sx={{ color: '#6366f1' }} />
-            </ListItemIcon>
-            <ListItemText 
-              primary="Dashboard" 
-              primaryTypographyProps={{ color: '#f1f5f9', fontWeight: 500 }}
-            />
-          </ListItem>
-          <ListItem
-            button
-            onClick={() => navigate('/monitoring')}
-            sx={{
-              mx: 1,
-              borderRadius: 2,
-              '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.1)' },
-            }}
-          >
-            <ListItemIcon>
-              <TimelineIcon sx={{ color: '#94a3b8' }} />
-            </ListItemIcon>
-            <ListItemText 
-              primary="Monitoring" 
-              primaryTypographyProps={{ color: '#94a3b8' }}
-            />
-          </ListItem>
-        </List>
-      </Box>
+  // Loading Skeleton Component
+  const LoadingSkeleton = () => (
+    <Grid container spacing={2}>
+      {[1, 2, 3, 4, 5, 6].map((i) => (
+        <Grid item xs={12} sm={6} lg={4} xl={3} key={i}>
+          <Card sx={{ 
+            height: 200, 
+            bgcolor: 'rgba(30, 41, 59, 0.5)',
+            border: '1px solid rgba(99, 102, 241, 0.2)',
+            borderRadius: 3,
+          }}>
+            <CardContent>
+              <Skeleton variant="text" width="60%" height={32} sx={{ bgcolor: 'rgba(99, 102, 241, 0.1)' }} />
+              <Skeleton variant="text" width="40%" height={24} sx={{ bgcolor: 'rgba(99, 102, 241, 0.1)', mt: 1 }} />
+              <Skeleton variant="rectangular" height={60} sx={{ bgcolor: 'rgba(99, 102, 241, 0.1)', mt: 2, borderRadius: 1 }} />
+            </CardContent>
+          </Card>
+        </Grid>
+      ))}
+    </Grid>
+  );
 
-      {/* User Info */}
-      <Box sx={{ p: 2, borderTop: '1px solid rgba(99, 102, 241, 0.2)' }}>
-        <Paper
-          sx={{
-            p: 2,
-            bgcolor: 'rgba(15, 23, 42, 0.5)',
-            borderRadius: 2,
-          }}
-        >
-          <Typography variant="body2" sx={{ color: '#e2e8f0', fontWeight: 500 }}>
-            {company || 'Company'}
-          </Typography>
-          <Typography variant="caption" sx={{ color: '#64748b' }}>
-            Active Workspace
-          </Typography>
-        </Paper>
-        <Button
-          fullWidth
-          variant="outlined"
-          startIcon={<LogoutIcon />}
-          onClick={handleLogout}
-          sx={{
-            mt: 2,
-            borderColor: 'rgba(239, 68, 68, 0.3)',
-            color: '#ef4444',
-            '&:hover': {
-              borderColor: '#ef4444',
-              bgcolor: 'rgba(239, 68, 68, 0.1)',
-            },
-          }}
-        >
-          Logout
-        </Button>
-      </Box>
-    </Box>
+  // Action buttons for the AppBar
+  const actionButtons = (
+    <>
+      <Button
+        variant="contained"
+        startIcon={<AddIcon />}
+        onClick={() => setCreateModalOpen(true)}
+        sx={{
+          mr: 2,
+          background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+          '&:hover': {
+            background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+          },
+        }}
+      >
+        New Pod
+      </Button>
+      <IconButton onClick={fetchPods} sx={{ color: '#94a3b8' }}>
+        <RefreshIcon />
+      </IconButton>
+    </>
   );
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#0f172a' }}>
-      {/* Sidebar - Desktop */}
-      {!isMobile && (
-        <Box component="nav" sx={{ flexShrink: 0 }}>
-          {sidebarContent}
-        </Box>
-      )}
-
-      {/* Sidebar - Mobile Drawer */}
-      {isMobile && (
-        <Drawer
-          variant="temporary"
-          open={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
-          ModalProps={{ keepMounted: true }}
-          PaperProps={{ sx: { bgcolor: 'transparent', boxShadow: 'none' } }}
-        >
-          {sidebarContent}
-        </Drawer>
-      )}
-
-      {/* Main Content */}
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Top Bar */}
-        <AppBar
-          position="static"
-          elevation={0}
-          sx={{
-            bgcolor: 'transparent',
-            borderBottom: '1px solid rgba(99, 102, 241, 0.2)',
-          }}
-        >
-          <Toolbar>
-            {isMobile && (
-              <IconButton
-                edge="start"
-                onClick={() => setDrawerOpen(true)}
-                sx={{ mr: 2, color: '#94a3b8' }}
-              >
-                <MenuIcon />
-              </IconButton>
-            )}
-            <Typography variant="h6" sx={{ flex: 1, color: '#f1f5f9', fontWeight: 600 }}>
-              Pod Management
-            </Typography>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={() => setCreateModalOpen(true)}
-              sx={{
-                mr: 2,
-                background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-                '&:hover': {
-                  background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
-                },
-              }}
+    <MainLayout title="Pod Management" actions={actionButtons}>
+      {/* Error State */}
+      {error && (
+        <Alert 
+          severity="error" 
+          sx={{ mb: 3, borderRadius: 2 }}
+          action={
+            <Button 
+              color="inherit" 
+              size="small" 
+              startIcon={<ReplayIcon />}
+              onClick={handleRetry}
             >
-              New Pod
+              Retry
             </Button>
-            <IconButton onClick={fetchPods} sx={{ color: '#94a3b8' }}>
-              <RefreshIcon />
-            </IconButton>
-          </Toolbar>
-        </AppBar>
+          }
+        >
+          {error}
+        </Alert>
+      )}
 
-        {/* Content */}
-        <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
-          {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-              <CircularProgress sx={{ color: '#6366f1' }} />
-            </Box>
-          ) : (
-            <>
-              {/* EUSUITE Section */}
-              <Box sx={{ mb: 4 }}>
-                <Typography variant="h6" sx={{ color: '#94a3b8', mb: 2, fontWeight: 500 }}>
-                  EUSUITE Office 365
-                </Typography>
-                {eusuiteDeployed ? (
-                  <EusuiteCard
-                    pods={eusuitePods}
-                    onViewDetails={handleViewDetails}
-                    onUndeploy={handleUndeployEusuite}
-                    isUndeploying={actionLoading.eusuite}
-                  />
-                ) : (
-                  <Card
-                    sx={{
-                      background: 'linear-gradient(145deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.5) 100%)',
-                      border: '1px dashed rgba(99, 102, 241, 0.3)',
-                      borderRadius: 3,
-                    }}
-                  >
-                    <CardContent sx={{ textAlign: 'center', py: 4 }}>
-                      <AppsIcon sx={{ fontSize: 48, color: '#64748b', mb: 2 }} />
-                      <Typography variant="h6" sx={{ color: '#94a3b8', mb: 1 }}>
-                        Deploy EUSUITE Office 365
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: '#64748b', mb: 3 }}>
-                        One-click deployment of Dylan's complete Office 365 suite
-                      </Typography>
-                      <Button
-                        variant="contained"
-                        startIcon={actionLoading.eusuite ? <CircularProgress size={18} /> : <CloudUploadIcon />}
-                        onClick={handleDeployEusuite}
-                        disabled={actionLoading.eusuite}
-                        sx={{
-                          background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-                          '&:hover': {
-                            background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
-                          },
-                        }}
-                      >
-                        Deploy EUSUITE
-                      </Button>
-                    </CardContent>
-                  </Card>
-                )}
-              </Box>
-
-              {/* Regular Pods Section */}
-              <Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                  <Typography variant="h6" sx={{ color: '#94a3b8', fontWeight: 500 }}>
-                    Your Pods
-                  </Typography>
-                  <Chip
-                    label={`${pods.length} pods`}
-                    size="small"
-                    sx={{ bgcolor: 'rgba(99, 102, 241, 0.2)', color: '#a5b4fc' }}
-                  />
-                </Box>
-                
-                {pods.length === 0 ? (
-                  <Paper
-                    sx={{
-                      p: 4,
-                      textAlign: 'center',
-                      bgcolor: 'rgba(30, 41, 59, 0.5)',
-                      border: '1px dashed rgba(99, 102, 241, 0.3)',
-                      borderRadius: 3,
-                    }}
-                  >
-                    <Typography variant="body1" sx={{ color: '#94a3b8' }}>
-                      No pods deployed yet. Click "New Pod" to get started.
-                    </Typography>
-                  </Paper>
-                ) : (
-                  <Grid container spacing={2}>
-                    {pods.map((pod) => (
-                      <Grid item xs={12} sm={6} lg={4} xl={3} key={pod.name}>
-                        <PodCard
-                          pod={pod}
-                          onViewDetails={handleViewDetails}
-                          onDelete={handleDeletePod}
-                          onRestart={handleRestartPod}
-                          isDeleting={actionLoading[pod.name]}
-                        />
-                      </Grid>
-                    ))}
-                  </Grid>
-                )}
-              </Box>
-            </>
-          )}
+      {/* Loading State */}
+      {loading ? (
+        <Box>
+          <Typography variant="h6" sx={{ color: '#94a3b8', mb: 2, fontWeight: 500 }}>
+            Loading pods...
+          </Typography>
+          <LoadingSkeleton />
         </Box>
-      </Box>
+      ) : (
+        <>
+          {/* EUSUITE Section */}
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h6" sx={{ color: '#94a3b8', mb: 2, fontWeight: 500 }}>
+              EUSUITE Office 365
+            </Typography>
+            {eusuiteDeployed ? (
+              <EusuiteCard
+                pods={eusuitePods}
+                onViewDetails={handleViewDetails}
+                onUndeploy={handleUndeployEusuite}
+                isUndeploying={actionLoading.eusuite}
+              />
+            ) : (
+              <Card
+                sx={{
+                  background: 'linear-gradient(145deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.5) 100%)',
+                  border: '1px dashed rgba(99, 102, 241, 0.3)',
+                  borderRadius: 3,
+                }}
+              >
+                <CardContent sx={{ textAlign: 'center', py: 4 }}>
+                  <AppsIcon sx={{ fontSize: 48, color: '#64748b', mb: 2 }} />
+                  <Typography variant="h6" sx={{ color: '#94a3b8', mb: 1 }}>
+                    Deploy EUSUITE Office 365
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#64748b', mb: 3 }}>
+                    One-click deployment of Dylan's complete Office 365 suite
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={actionLoading.eusuite ? <CircularProgress size={18} /> : <CloudUploadIcon />}
+                    onClick={handleDeployEusuite}
+                    disabled={actionLoading.eusuite}
+                    sx={{
+                      background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                      '&:hover': {
+                        background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+                      },
+                    }}
+                  >
+                    Deploy EUSUITE
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </Box>
+
+          {/* Regular Pods Section */}
+          <Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+              <Typography variant="h6" sx={{ color: '#94a3b8', fontWeight: 500 }}>
+                Your Pods
+              </Typography>
+              <Chip
+                label={`${pods.length} pods`}
+                size="small"
+                sx={{ bgcolor: 'rgba(99, 102, 241, 0.2)', color: '#a5b4fc' }}
+              />
+            </Box>
+            
+            {pods.length === 0 ? (
+              <Paper
+                sx={{
+                  p: 4,
+                  textAlign: 'center',
+                  bgcolor: 'rgba(30, 41, 59, 0.5)',
+                  border: '1px dashed rgba(99, 102, 241, 0.3)',
+                  borderRadius: 3,
+                }}
+              >
+                <AppsIcon sx={{ fontSize: 48, color: '#64748b', mb: 2 }} />
+                <Typography variant="h6" sx={{ color: '#94a3b8', mb: 1 }}>
+                  No pods deployed yet
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#64748b', mb: 3 }}>
+                  Click "New Pod" to deploy your first application
+                </Typography>
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => setCreateModalOpen(true)}
+                  sx={{
+                    background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                    '&:hover': {
+                      background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+                    },
+                  }}
+                >
+                  Deploy Your First Pod
+                </Button>
+              </Paper>
+            ) : (
+              <Grid container spacing={2}>
+                {pods.map((pod) => (
+                  <Grid item xs={12} sm={6} lg={4} xl={3} key={pod.id || pod.name}>
+                    <PodCard
+                      pod={pod}
+                      onViewDetails={handleViewDetails}
+                      onDelete={handleDeletePod}
+                      onRestart={handleRestartPod}
+                      isDeleting={actionLoading[pod.name]}
+                    />
+                  </Grid>
+                ))}
+              </Grid>
+            )}
+          </Box>
+        </>
+      )}
 
       {/* Modals */}
       <CreatePodModal
@@ -1447,6 +2162,6 @@ export default function Dashboard() {
           {notification.message}
         </Alert>
       </Snackbar>
-    </Box>
+    </MainLayout>
   );
 }

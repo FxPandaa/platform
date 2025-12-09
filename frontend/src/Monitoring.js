@@ -1,10 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AppBar,
-  Toolbar,
   Typography,
-  Button,
   Container,
   Grid,
   Card,
@@ -23,31 +20,18 @@ import {
   Paper,
   Tooltip,
   Fade,
-  Drawer,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  useTheme,
-  useMediaQuery,
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
-  Logout as LogoutIcon,
-  Dashboard as DashboardIcon,
   Memory as MemoryIcon,
-  Storage as StorageIcon,
   Speed as SpeedIcon,
   TrendingUp as TrendingUpIcon,
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
-  Warning as WarningIcon,
   Schedule as ScheduleIcon,
   Euro as EuroIcon,
   Dns as DnsIcon,
   Layers as LayersIcon,
-  Menu as MenuIcon,
-  Timeline as TimelineIcon,
 } from '@mui/icons-material';
 import {
   AreaChart,
@@ -65,7 +49,8 @@ import {
   Legend
 } from 'recharts';
 import axios from 'axios';
-import { COLORS as THEME_COLORS, STATUS_COLORS as THEME_STATUS_COLORS } from './theme';
+import { COLORS as THEME_COLORS } from './theme';
+import MainLayout from './components/layout/MainLayout';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://192.168.154.114:30001";
 
@@ -102,12 +87,8 @@ function Monitoring() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [historicalData, setHistoricalData] = useState([]);
-  const [drawerOpen, setDrawerOpen] = useState(false);
   
   const navigate = useNavigate();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const company = localStorage.getItem('company');
 
   const fetchMonitoringData = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true);
@@ -149,12 +130,6 @@ function Monitoring() {
     return () => clearInterval(interval);
   }, [fetchMonitoringData]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('company');
-    navigate('/');
-  };
-
   // Custom tooltip for charts
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -180,9 +155,11 @@ function Monitoring() {
 
   if (loading) {
     return (
-      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <CircularProgress size={60} />
-      </Box>
+      <MainLayout title="Monitoring">
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+          <CircularProgress size={60} sx={{ color: '#6366f1' }} />
+        </Box>
+      </MainLayout>
     );
   }
 
@@ -206,195 +183,34 @@ function Monitoring() {
     memory: pod.memory_mi
   }));
 
-  // Sidebar content
-  const sidebarContent = (
-    <Box
-      sx={{
-        width: 260,
-        height: '100%',
-        background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
-        borderRight: '1px solid rgba(99, 102, 241, 0.2)',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      {/* Logo */}
-      <Box sx={{ p: 3, borderBottom: '1px solid rgba(99, 102, 241, 0.2)' }}>
-        <Typography
-          variant="h5"
-          sx={{
-            fontWeight: 700,
-            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-          }}
+  // Action buttons for AppBar
+  const actionButtons = (
+    <>
+      <Tooltip title="Refresh">
+        <IconButton 
+          color="inherit" 
+          onClick={() => fetchMonitoringData(true)} 
+          disabled={refreshing}
+          sx={{ color: '#94a3b8' }}
         >
-          Shield-SaaS
-        </Typography>
-        <Typography variant="caption" sx={{ color: '#64748b' }}>
-          Kubernetes Platform
-        </Typography>
-      </Box>
-
-      {/* Navigation */}
-      <Box sx={{ flex: 1, py: 2 }}>
-        <List>
-          <ListItem
-            button
-            onClick={() => navigate('/dashboard')}
-            sx={{
-              mx: 1,
-              borderRadius: 2,
-              '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.1)' },
-            }}
-          >
-            <ListItemIcon>
-              <DashboardIcon sx={{ color: '#94a3b8' }} />
-            </ListItemIcon>
-            <ListItemText 
-              primary="Dashboard" 
-              primaryTypographyProps={{ color: '#94a3b8' }}
-            />
-          </ListItem>
-          <ListItem
-            button
-            selected
-            sx={{
-              mx: 1,
-              borderRadius: 2,
-              '&.Mui-selected': {
-                bgcolor: 'rgba(99, 102, 241, 0.15)',
-                '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.2)' },
-              },
-            }}
-          >
-            <ListItemIcon>
-              <TimelineIcon sx={{ color: '#6366f1' }} />
-            </ListItemIcon>
-            <ListItemText 
-              primary="Monitoring" 
-              primaryTypographyProps={{ color: '#f1f5f9', fontWeight: 500 }}
-            />
-          </ListItem>
-        </List>
-      </Box>
-
-      {/* User Info */}
-      <Box sx={{ p: 2, borderTop: '1px solid rgba(99, 102, 241, 0.2)' }}>
-        <Paper
-          sx={{
-            p: 2,
-            bgcolor: 'rgba(15, 23, 42, 0.5)',
-            borderRadius: 2,
-          }}
-        >
-          <Typography variant="body2" sx={{ color: '#e2e8f0', fontWeight: 500 }}>
-            {company || 'Company'}
-          </Typography>
-          <Typography variant="caption" sx={{ color: '#64748b' }}>
-            Active Workspace
-          </Typography>
-        </Paper>
-        <Button
-          fullWidth
-          variant="outlined"
-          startIcon={<LogoutIcon />}
-          onClick={handleLogout}
-          sx={{
-            mt: 2,
-            borderColor: 'rgba(239, 68, 68, 0.3)',
-            color: '#ef4444',
-            '&:hover': {
-              borderColor: '#ef4444',
-              bgcolor: 'rgba(239, 68, 68, 0.1)',
-            },
-          }}
-        >
-          Logout
-        </Button>
-      </Box>
-    </Box>
+          <RefreshIcon sx={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
+        </IconButton>
+      </Tooltip>
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </>
   );
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#0f172a' }}>
-      {/* Sidebar - Desktop */}
-      {!isMobile && (
-        <Box component="nav" sx={{ flexShrink: 0 }}>
-          {sidebarContent}
-        </Box>
-      )}
+    <MainLayout title="Monitoring" actions={actionButtons}>
+      {/* Refresh indicator */}
+      {refreshing && <LinearProgress sx={{ height: 2, mb: 2, borderRadius: 1 }} />}
 
-      {/* Sidebar - Mobile Drawer */}
-      {isMobile && (
-        <Drawer
-          variant="temporary"
-          open={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
-          ModalProps={{ keepMounted: true }}
-          PaperProps={{ sx: { bgcolor: 'transparent', boxShadow: 'none' } }}
-        >
-          {sidebarContent}
-        </Drawer>
-      )}
-
-      {/* Main Content */}
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Top Bar */}
-        <AppBar
-          position="static"
-          elevation={0}
-          sx={{
-            bgcolor: 'transparent',
-            borderBottom: '1px solid rgba(99, 102, 241, 0.2)',
-          }}
-        >
-          <Toolbar>
-            {isMobile && (
-              <IconButton
-                edge="start"
-                onClick={() => setDrawerOpen(true)}
-                sx={{ mr: 2, color: '#94a3b8' }}
-              >
-                <MenuIcon />
-              </IconButton>
-            )}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
-              <Box sx={{ 
-                width: 40, 
-                height: 40, 
-                borderRadius: 2, 
-                background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <TrendingUpIcon sx={{ color: 'white' }} />
-              </Box>
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 700, color: 'white' }}>
-                  Monitoring
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {company}
-                </Typography>
-              </Box>
-            </Box>
-            
-            <Tooltip title="Refresh">
-              <IconButton color="inherit" onClick={() => fetchMonitoringData(true)} disabled={refreshing}>
-                <RefreshIcon sx={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
-              </IconButton>
-            </Tooltip>
-          </Toolbar>
-        </AppBar>
-
-        {/* Refresh indicator */}
-        {refreshing && <LinearProgress sx={{ height: 2 }} />}
-
-        {/* Content */}
-        <Box sx={{ flex: 1, overflow: 'auto' }}>
-          <Container maxWidth="xl" sx={{ py: 4 }}>
+      <Container maxWidth="xl" disableGutters>
         {/* Summary Cards */}
         <Fade in timeout={500}>
           <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -974,17 +790,7 @@ function Monitoring() {
           </Typography>
         </Box>
       </Container>
-      </Box>
-      </Box>
-
-      {/* CSS for spinner animation */}
-      <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
-    </Box>
+    </MainLayout>
   );
 }
 
