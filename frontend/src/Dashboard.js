@@ -2340,7 +2340,7 @@ export default function Dashboard() {
     
     setActionLoading(prev => ({ ...prev, eusuite: true }));
     try {
-      await axios.post(`${API_BASE}/eusuite/undeploy`, {}, {
+      await axios.delete(`${API_BASE}/eusuite/undeploy`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       showNotification('EUSUITE undeployed successfully', 'success');
