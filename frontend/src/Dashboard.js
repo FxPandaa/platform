@@ -417,15 +417,12 @@ const PodCard = React.memo(({
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
-          background: 'linear-gradient(145deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%)',
-          backdropFilter: 'blur(10px)',
-          border: '1px solid rgba(99, 102, 241, 0.2)',
-          borderRadius: 3,
-          transition: `all ${ANIMATION_DURATION.normal}ms ease`,
+          bgcolor: '#1e293b',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          borderRadius: 1,
+          transition: 'border-color 0.2s ease',
           '&:hover': {
-            transform: 'translateY(-4px)',
-            boxShadow: '0 12px 40px rgba(99, 102, 241, 0.15)',
-            borderColor: 'rgba(99, 102, 241, 0.4)',
+            borderColor: 'rgba(255, 255, 255, 0.12)',
           },
         }}
       >
@@ -525,12 +522,12 @@ const PodCard = React.memo(({
             onClick={() => onViewDetails(pod)}
             sx={{
               flex: 1,
-              borderColor: 'rgba(99, 102, 241, 0.3)',
-              color: '#a5b4fc',
+              borderColor: 'rgba(255, 255, 255, 0.12)',
+              color: '#94a3b8',
               fontSize: '0.75rem',
               '&:hover': {
                 borderColor: '#6366f1',
-                bgcolor: 'rgba(99, 102, 241, 0.1)',
+                bgcolor: 'rgba(99, 102, 241, 0.08)',
               },
             }}
           >
@@ -576,10 +573,9 @@ const EusuiteCard = React.memo(({
     <Fade in timeout={ANIMATION_DURATION.normal}>
       <Card
         sx={{
-          background: 'linear-gradient(145deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.1) 100%)',
-          backdropFilter: 'blur(10px)',
-          border: '1px solid rgba(139, 92, 246, 0.3)',
-          borderRadius: 3,
+          bgcolor: '#1e293b',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          borderRadius: 1,
           overflow: 'hidden',
         }}
       >
@@ -589,10 +585,10 @@ const EusuiteCard = React.memo(({
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <Box
                 sx={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 2,
-                  background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                  width: 44,
+                  height: 44,
+                  borderRadius: 1,
+                  bgcolor: '#6366f1',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -627,12 +623,12 @@ const EusuiteCard = React.memo(({
               variant="determinate"
               value={(runningCount / totalCount) * 100}
               sx={{
-                height: 8,
-                borderRadius: 4,
-                bgcolor: 'rgba(99, 102, 241, 0.1)',
+                height: 6,
+                borderRadius: 3,
+                bgcolor: 'rgba(255, 255, 255, 0.06)',
                 '& .MuiLinearProgress-bar': {
-                  borderRadius: 4,
-                  background: 'linear-gradient(90deg, #6366f1 0%, #22c55e 100%)',
+                  borderRadius: 3,
+                  bgcolor: runningCount === totalCount ? '#22c55e' : '#6366f1',
                 },
               }}
             />
@@ -640,7 +636,7 @@ const EusuiteCard = React.memo(({
 
           {/* Expandable Pod List */}
           <Collapse in={expanded}>
-            <Divider sx={{ my: 2, borderColor: 'rgba(99, 102, 241, 0.2)' }} />
+            <Divider sx={{ my: 2, borderColor: 'rgba(255, 255, 255, 0.06)' }} />
             <List dense sx={{ py: 0 }}>
               {pods.map((pod) => (
                 <ListItem
@@ -648,8 +644,8 @@ const EusuiteCard = React.memo(({
                   sx={{
                     borderRadius: 1,
                     mb: 0.5,
-                    bgcolor: 'rgba(15, 23, 42, 0.5)',
-                    '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.1)' },
+                    bgcolor: 'rgba(255, 255, 255, 0.02)',
+                    '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.05)' },
                   }}
                   secondaryAction={
                     <IconButton 
@@ -832,8 +828,8 @@ const PodDetailModal = ({
         sx: {
           bgcolor: '#1e293b',
           backgroundImage: 'none',
-          borderRadius: 3,
-          border: '1px solid rgba(99, 102, 241, 0.2)',
+          borderRadius: 1,
+          border: '1px solid rgba(255, 255, 255, 0.06)',
         },
       }}
     >
@@ -841,7 +837,7 @@ const PodDetailModal = ({
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'space-between',
-        borderBottom: '1px solid rgba(99, 102, 241, 0.2)',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <StatusBadge status={pod.status} />
@@ -858,7 +854,7 @@ const PodDetailModal = ({
         value={activeTab}
         onChange={(e, v) => setActiveTab(v)}
         sx={{
-          borderBottom: '1px solid rgba(99, 102, 241, 0.2)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
           '& .MuiTab-root': { color: '#94a3b8' },
           '& .Mui-selected': { color: '#6366f1' },
           '& .MuiTabs-indicator': { bgcolor: '#6366f1' },
@@ -1369,7 +1365,7 @@ const PodDetailModal = ({
         </TabPanel>
       </DialogContent>
 
-      <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(99, 102, 241, 0.2)' }}>
+      <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255, 255, 255, 0.06)' }}>
         <Button onClick={onClose} sx={{ color: '#94a3b8' }}>
           Close
         </Button>

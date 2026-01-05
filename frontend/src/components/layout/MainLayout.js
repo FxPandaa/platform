@@ -117,22 +117,24 @@ export default function MainLayout({ children, title, actions }) {
       {/* Logo Section */}
       <Box 
         sx={{ 
-          p: collapsed ? 1.5 : 3, 
+          p: collapsed ? 1 : 2.5, 
           borderBottom: `1px solid rgba(255, 255, 255, 0.06)`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: collapsed ? 'center' : 'space-between',
-          minHeight: 72,
+          minHeight: 64,
         }}
       >
         {!collapsed && (
-          <Box>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
             <Typography
-              variant="h6"
+              variant="subtitle1"
               sx={{
                 fontWeight: 600,
                 color: '#f1f5f9',
                 whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
               }}
             >
               Self Service Platform
@@ -147,12 +149,19 @@ export default function MainLayout({ children, title, actions }) {
             onClick={handleDrawerToggle}
             size="small"
             sx={{ 
-              color: colors.textSidebarSecondary,
+              color: '#f1f5f9',
+              bgcolor: 'rgba(255, 255, 255, 0.08)',
+              width: 32,
+              height: 32,
+              flexShrink: 0,
               transform: collapsed ? 'rotate(180deg)' : 'none',
               transition: `transform ${TRANSITION_DURATION}ms ease`,
+              '&:hover': {
+                bgcolor: 'rgba(255, 255, 255, 0.15)',
+              },
             }}
           >
-            <ChevronLeftIcon />
+            <ChevronLeftIcon sx={{ fontSize: 20 }} />
           </IconButton>
         )}
       </Box>
