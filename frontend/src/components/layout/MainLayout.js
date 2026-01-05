@@ -26,7 +26,6 @@ import {
   ChevronLeft as ChevronLeftIcon,
 } from '@mui/icons-material';
 import { useThemeContext } from '../../theme';
-import ThemeSelector from '../common/ThemeSelector';
 
 // Layout Constants - CSS Variables for easy adjustment
 const SIDEBAR_WIDTH = 240;
@@ -108,7 +107,7 @@ export default function MainLayout({ children, title, actions }) {
         width: collapsed && !isMobile ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH,
         height: '100%',
         background: colors.bgSidebar,
-        borderRight: `1px solid ${alpha(colors.primary, 0.2)}`,
+        borderRight: `1px solid rgba(255, 255, 255, 0.06)`,
         display: 'flex',
         flexDirection: 'column',
         transition: `width ${TRANSITION_DURATION}ms ease`,
@@ -119,7 +118,7 @@ export default function MainLayout({ children, title, actions }) {
       <Box 
         sx={{ 
           p: collapsed ? 1.5 : 3, 
-          borderBottom: `1px solid ${alpha(colors.primary, 0.2)}`,
+          borderBottom: `1px solid rgba(255, 255, 255, 0.06)`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: collapsed ? 'center' : 'space-between',
@@ -129,19 +128,17 @@ export default function MainLayout({ children, title, actions }) {
         {!collapsed && (
           <Box>
             <Typography
-              variant="h5"
+              variant="h6"
               sx={{
-                fontWeight: 700,
-                background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%)`,
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
+                fontWeight: 600,
+                color: '#f1f5f9',
                 whiteSpace: 'nowrap',
               }}
             >
-              Shield-SaaS
+              Self Service Platform
             </Typography>
             <Typography variant="caption" sx={{ color: colors.textSidebarSecondary }}>
-              Kubernetes Platform
+              Kubernetes
             </Typography>
           </Box>
         )}
@@ -174,19 +171,19 @@ export default function MainLayout({ children, title, actions }) {
                 sx={{
                   mx: collapsed ? 0.5 : 1,
                   px: collapsed ? 1.5 : 2,
-                  borderRadius: 2,
+                  borderRadius: 1,
                   justifyContent: collapsed ? 'center' : 'flex-start',
                   '&.Mui-selected': {
-                    bgcolor: alpha(colors.primary, 0.15),
-                    '&:hover': { bgcolor: alpha(colors.primary, 0.2) },
+                    bgcolor: 'rgba(99, 102, 241, 0.15)',
+                    '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.2)' },
                   },
-                  '&:hover': { bgcolor: alpha(colors.primary, 0.1) },
+                  '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.08)' },
                 }}
               >
                 <ListItemIcon 
                   sx={{ 
                     minWidth: collapsed ? 0 : 40,
-                    color: isActive ? colors.primary : colors.textSidebarSecondary,
+                    color: isActive ? '#6366f1' : colors.textSidebarSecondary,
                   }}
                 >
                   {item.icon}
@@ -195,7 +192,7 @@ export default function MainLayout({ children, title, actions }) {
                   <ListItemText
                     primary={item.label}
                     primaryTypographyProps={{
-                      color: isActive ? colors.textSidebar : colors.textSidebarSecondary,
+                      color: isActive ? '#f1f5f9' : colors.textSidebarSecondary,
                       fontWeight: isActive ? 500 : 400,
                     }}
                   />
@@ -206,26 +203,22 @@ export default function MainLayout({ children, title, actions }) {
         </List>
       </Box>
 
-      {/* Theme Selector */}
-      <Box sx={{ px: collapsed ? 1 : 0, py: 1 }}>
-        <Divider sx={{ borderColor: alpha(colors.primary, 0.15), mb: 1 }} />
-        <ThemeSelector collapsed={collapsed} />
-      </Box>
-
       {/* User Info Section */}
       <Box 
         sx={{ 
           p: collapsed ? 1 : 2, 
-          borderTop: `1px solid ${alpha(colors.primary, 0.2)}`,
+          borderTop: `1px solid rgba(255, 255, 255, 0.06)`,
+          mt: 'auto',
         }}
       >
         {!collapsed && (
-          <Paper
+          <Box
             sx={{
-              p: 2,
-              mb: 2,
-              bgcolor: alpha(colors.bgDefault, 0.5),
-              borderRadius: 2,
+              p: 1.5,
+              mb: 1.5,
+              bgcolor: 'rgba(255, 255, 255, 0.04)',
+              borderRadius: 1,
+              border: '1px solid rgba(255, 255, 255, 0.06)',
             }}
           >
             <Typography variant="body2" sx={{ color: colors.textSidebar, fontWeight: 500 }}>
@@ -234,7 +227,7 @@ export default function MainLayout({ children, title, actions }) {
             <Typography variant="caption" sx={{ color: colors.textSidebarSecondary }}>
               Active Workspace
             </Typography>
-          </Paper>
+          </Box>
         )}
         <Button
           fullWidth={!collapsed}
@@ -334,9 +327,8 @@ export default function MainLayout({ children, title, actions }) {
           position="sticky"
           elevation={0}
           sx={{
-            bgcolor: alpha(colors.bgPaper, 0.8),
-            backdropFilter: 'blur(10px)',
-            borderBottom: `1px solid ${alpha(colors.primary, 0.2)}`,
+            bgcolor: colors.bgPaper,
+            borderBottom: `1px solid rgba(255, 255, 255, 0.06)`,
             zIndex: 1100,
           }}
         >

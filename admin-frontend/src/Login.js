@@ -199,7 +199,7 @@ function Login() {
         </Paper>
         
         <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 3, color: '#475569' }}>
-          Shield SaaS Platform • Admin Access
+          Self Service Platform • Admin Access
         </Typography>
       </Container>
     </Box>

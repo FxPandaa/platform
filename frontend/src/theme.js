@@ -2,9 +2,9 @@
  * Design System Theme Configuration
  * Self-Service Kubernetes Platform
  * 
- * Three Professional Themes: Light, Dark, Black (OLED)
+ * Single clean dark theme - matching login screen style
  */
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useMemo } from 'react';
 import { createTheme, alpha, ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 
@@ -28,252 +28,124 @@ export const BREAKPOINTS = {
 };
 
 // ============================================
-// THEME KEYS
+// SINGLE DARK THEME COLORS (matching login screen)
 // ============================================
 
-export const THEME_KEYS = {
-  LIGHT: 'light',
-  DARK: 'dark',
-  BLACK: 'black',
-};
-
-export const THEME_LABELS = {
-  [THEME_KEYS.LIGHT]: 'Light',
-  [THEME_KEYS.DARK]: 'Dark',
-  [THEME_KEYS.BLACK]: 'Black (OLED)',
-};
-
-export const THEME_ICONS = {
-  [THEME_KEYS.LIGHT]: '☀️',
-  [THEME_KEYS.DARK]: '🌙',
-  [THEME_KEYS.BLACK]: '🖤',
-};
-
-// ============================================
-// COLOR PALETTES PER THEME
-// ============================================
-
-const LIGHT_COLORS = {
+const COLORS = {
   // Primary accents
-  primary: '#5C4EDB',
-  secondary: '#0095B6',
+  primary: '#6366f1',
+  secondary: '#8b5cf6',
   
   // Status colors
-  success: '#16A34A',
-  warning: '#CA8A04',
-  error: '#DC2626',
-  info: '#0284C7',
+  success: '#22c55e',
+  warning: '#f59e0b',
+  error: '#ef4444',
+  info: '#3b82f6',
   
   // Resource colors
-  cpu: '#0891B2',
-  memory: '#7C3AED',
-  network: '#EA580C',
-  cost: '#16A34A',
+  cpu: '#06b6d4',
+  memory: '#8b5cf6',
+  network: '#f97316',
+  cost: '#22c55e',
   
-  // Background colors
-  bgDefault: '#F5F7FA',
-  bgPaper: '#FFFFFF',
-  bgElevated: '#FFFFFF',
-  bgHover: '#F1F5F9',
-  bgSidebar: '#1E293B',
-  
-  // Text colors
-  textPrimary: '#1E293B',
-  textSecondary: '#64748B',
-  textDisabled: '#94A3B8',
-  textSidebar: '#FFFFFF',
-  textSidebarSecondary: 'rgba(255,255,255,0.7)',
-  
-  // Border colors
-  border: '#E2E8F0',
-  borderHover: '#CBD5E1',
-  
-  // EUSUITE
-  eusuite: '#D97706',
-  
-  // Card specific
-  cardGradient: 'linear-gradient(145deg, #FFFFFF 0%, #F8FAFC 100%)',
-  cardShadow: '0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06)',
-  cardShadowHover: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)',
-};
-
-const DARK_COLORS = {
-  // Primary accents
-  primary: '#8B7DFF',
-  secondary: '#00D9FF',
-  
-  // Status colors
-  success: '#00E676',
-  warning: '#FFC107',
-  error: '#FF5252',
-  info: '#2196F3',
-  
-  // Resource colors
-  cpu: '#00BCD4',
-  memory: '#9C27B0',
-  network: '#FF9800',
-  cost: '#4CAF50',
-  
-  // Background colors
-  bgDefault: '#0A0E27',
-  bgPaper: '#141B3D',
-  bgElevated: '#1A2347',
-  bgHover: '#1E2952',
-  bgSidebar: '#080B1C',
+  // Background colors (matching login: #0f172a, #1e293b)
+  bgDefault: '#0f172a',
+  bgPaper: '#1e293b',
+  bgElevated: '#334155',
+  bgHover: '#334155',
+  bgSidebar: '#0f172a',
   
   // Text colors
-  textPrimary: '#FFFFFF',
-  textSecondary: 'rgba(255,255,255,0.7)',
-  textDisabled: 'rgba(255,255,255,0.4)',
-  textSidebar: '#FFFFFF',
-  textSidebarSecondary: 'rgba(255,255,255,0.7)',
+  textPrimary: '#f1f5f9',
+  textSecondary: '#64748b',
+  textDisabled: '#475569',
+  textSidebar: '#f1f5f9',
+  textSidebarSecondary: '#64748b',
   
-  // Border colors
-  border: 'rgba(255,255,255,0.1)',
-  borderHover: 'rgba(255,255,255,0.2)',
+  // Border colors (matching login: rgba(255, 255, 255, 0.06))
+  border: 'rgba(255, 255, 255, 0.06)',
+  borderHover: 'rgba(255, 255, 255, 0.12)',
   
-  // EUSUITE
-  eusuite: '#F59E0B',
-  
-  // Card specific
-  cardGradient: 'linear-gradient(145deg, #141B3D 0%, #0D1229 100%)',
-  cardShadow: '0 4px 6px rgba(0,0,0,0.3)',
-  cardShadowHover: '0 8px 25px rgba(139, 125, 255, 0.15)',
+  // Card specific - clean, no gradients
+  cardBg: '#1e293b',
+  cardShadow: 'none',
+  cardShadowHover: 'none',
 };
 
-const BLACK_COLORS = {
-  // Primary accents (neon style for contrast)
-  primary: '#A78BFA',
-  secondary: '#22D3EE',
-  
-  // Status colors (vibrant for contrast on black)
-  success: '#34D399',
-  warning: '#FBBF24',
-  error: '#F87171',
-  info: '#60A5FA',
-  
-  // Resource colors
-  cpu: '#22D3EE',
-  memory: '#C084FC',
-  network: '#FB923C',
-  cost: '#4ADE80',
-  
-  // Background colors - TRUE BLACK
-  bgDefault: '#000000',
-  bgPaper: '#0A0A0A',
-  bgElevated: '#121212',
-  bgHover: '#1A1A1A',
-  bgSidebar: '#000000',
-  
-  // Text colors
-  textPrimary: '#FAFAFA',
-  textSecondary: '#A1A1AA',
-  textDisabled: '#52525B',
-  textSidebar: '#FAFAFA',
-  textSidebarSecondary: '#A1A1AA',
-  
-  // Border colors
-  border: '#27272A',
-  borderHover: '#3F3F46',
-  
-  // EUSUITE
-  eusuite: '#F59E0B',
-  
-  // Card specific
-  cardGradient: 'linear-gradient(145deg, #0A0A0A 0%, #000000 100%)',
-  cardShadow: '0 0 0 1px #27272A',
-  cardShadowHover: '0 0 20px rgba(167, 139, 250, 0.2)',
-};
-
-export const THEME_COLORS = {
-  [THEME_KEYS.LIGHT]: LIGHT_COLORS,
-  [THEME_KEYS.DARK]: DARK_COLORS,
-  [THEME_KEYS.BLACK]: BLACK_COLORS,
-};
-
-// Default export for backward compatibility
-export const COLORS = DARK_COLORS;
+export { COLORS };
 
 // ============================================
-// STATUS & CATEGORY COLORS (Theme-aware)
+// STATUS & CATEGORY COLORS
 // ============================================
 
-export const getStatusColors = (themeKey = THEME_KEYS.DARK) => {
-  const colors = THEME_COLORS[themeKey];
-  return {
-    Running: colors.success,
-    Pending: colors.warning,
-    Failed: colors.error,
-    Succeeded: colors.info,
-    CrashLoopBackOff: colors.error,
-    Error: colors.error,
-    Unknown: '#64748B',
-  };
+export const STATUS_COLORS = {
+  Running: COLORS.success,
+  Pending: COLORS.warning,
+  Failed: COLORS.error,
+  Succeeded: COLORS.info,
+  CrashLoopBackOff: COLORS.error,
+  Error: COLORS.error,
+  Unknown: '#64748b',
 };
 
-export const getCategoryColors = (themeKey = THEME_KEYS.DARK) => {
-  const colors = THEME_COLORS[themeKey];
-  return {
-    app: colors.primary,
-    db: colors.memory,
-    cache: colors.cpu,
-    monitoring: '#EC4899',
-    eusuite: colors.eusuite,
-    other: '#64748B',
-  };
+export const CATEGORY_COLORS = {
+  app: COLORS.primary,
+  db: COLORS.memory,
+  cache: COLORS.cpu,
+  monitoring: '#ec4899',
+  eusuite: COLORS.warning,
+  other: '#64748b',
 };
 
-// Backward compatibility exports
-export const STATUS_COLORS = getStatusColors(THEME_KEYS.DARK);
-export const CATEGORY_COLORS = getCategoryColors(THEME_KEYS.DARK);
+// Backward compatibility
+export const getStatusColors = () => STATUS_COLORS;
+export const getCategoryColors = () => CATEGORY_COLORS;
 
 // ============================================
-// CREATE MUI THEME FUNCTION
+// CREATE MUI THEME
 // ============================================
 
-const createAppTheme = (themeKey) => {
-  const colors = THEME_COLORS[themeKey];
-  const isDark = themeKey !== THEME_KEYS.LIGHT;
-  
+const createAppTheme = () => {
   return createTheme({
     palette: {
-      mode: isDark ? 'dark' : 'light',
+      mode: 'dark',
       primary: { 
-        main: colors.primary,
-        light: alpha(colors.primary, 0.8),
-        dark: alpha(colors.primary, 1.2),
+        main: COLORS.primary,
+        light: alpha(COLORS.primary, 0.8),
+        dark: alpha(COLORS.primary, 1.2),
         contrastText: '#FFFFFF',
       },
       secondary: { 
-        main: colors.secondary,
+        main: COLORS.secondary,
         contrastText: '#FFFFFF',
       },
       success: { 
-        main: colors.success,
+        main: COLORS.success,
       },
       warning: { 
-        main: colors.warning,
+        main: COLORS.warning,
       },
       error: { 
-        main: colors.error,
+        main: COLORS.error,
       },
       info: {
-        main: colors.info,
+        main: COLORS.info,
       },
       background: {
-        default: colors.bgDefault,
-        paper: colors.bgPaper,
+        default: COLORS.bgDefault,
+        paper: COLORS.bgPaper,
       },
       text: {
-        primary: colors.textPrimary,
-        secondary: colors.textSecondary,
-        disabled: colors.textDisabled,
+        primary: COLORS.textPrimary,
+        secondary: COLORS.textSecondary,
+        disabled: COLORS.textDisabled,
       },
-      divider: colors.border,
+      divider: COLORS.border,
     },
     
+    // CLEAN styling - less rounded corners (matching login: borderRadius: 2 = 8px)
     shape: { 
-      borderRadius: 12,
+      borderRadius: 8,
     },
     
     typography: {
@@ -292,37 +164,37 @@ const createAppTheme = (themeKey) => {
     
     // Custom theme properties
     custom: {
-      colors,
+      colors: COLORS,
       sidebar: {
         width: 240,
         collapsedWidth: 60,
-        background: colors.bgSidebar,
-        text: colors.textSidebar,
-        textSecondary: colors.textSidebarSecondary,
+        background: COLORS.bgSidebar,
+        text: COLORS.textSidebar,
+        textSecondary: COLORS.textSidebarSecondary,
       },
       card: {
-        gradient: colors.cardGradient,
-        shadow: colors.cardShadow,
-        shadowHover: colors.cardShadowHover,
+        background: COLORS.cardBg,
+        shadow: COLORS.cardShadow,
+        shadowHover: COLORS.cardShadowHover,
       },
-      statusColors: getStatusColors(themeKey),
-      categoryColors: getCategoryColors(themeKey),
+      statusColors: STATUS_COLORS,
+      categoryColors: CATEGORY_COLORS,
     },
     
     components: {
       MuiCssBaseline: {
         styleOverrides: {
           body: {
-            scrollbarColor: `${colors.border} transparent`,
+            scrollbarColor: `${COLORS.border} transparent`,
             '&::-webkit-scrollbar, & *::-webkit-scrollbar': {
               width: 8,
               height: 8,
             },
             '&::-webkit-scrollbar-thumb, & *::-webkit-scrollbar-thumb': {
               borderRadius: 4,
-              backgroundColor: colors.border,
+              backgroundColor: COLORS.border,
               '&:hover': {
-                backgroundColor: colors.borderHover,
+                backgroundColor: COLORS.borderHover,
               },
             },
             '&::-webkit-scrollbar-track, & *::-webkit-scrollbar-track': {
@@ -335,13 +207,13 @@ const createAppTheme = (themeKey) => {
         styleOverrides: {
           root: {
             backgroundImage: 'none',
-            background: colors.cardGradient,
-            border: `1px solid ${colors.border}`,
-            boxShadow: colors.cardShadow,
-            transition: 'all 0.3s ease',
+            backgroundColor: COLORS.cardBg,
+            border: `1px solid ${COLORS.border}`,
+            boxShadow: 'none',
+            borderRadius: 8,
+            transition: 'border-color 0.2s ease',
             '&:hover': {
-              borderColor: colors.borderHover,
-              boxShadow: colors.cardShadowHover,
+              borderColor: COLORS.borderHover,
             },
           },
         },
@@ -350,21 +222,22 @@ const createAppTheme = (themeKey) => {
         styleOverrides: {
           root: {
             backgroundImage: 'none',
-            backgroundColor: colors.bgPaper,
+            backgroundColor: COLORS.bgPaper,
+            borderRadius: 8,
           },
         },
       },
       MuiButton: {
         styleOverrides: {
           root: {
-            borderRadius: 8,
+            borderRadius: 6,
             padding: '8px 16px',
             fontWeight: 500,
           },
           contained: {
             boxShadow: 'none',
             '&:hover': {
-              boxShadow: `0 4px 12px ${alpha(colors.primary, 0.3)}`,
+              boxShadow: 'none',
             },
           },
         },
@@ -373,6 +246,7 @@ const createAppTheme = (themeKey) => {
         styleOverrides: {
           root: {
             fontWeight: 500,
+            borderRadius: 6,
           },
         },
       },
@@ -380,18 +254,19 @@ const createAppTheme = (themeKey) => {
         styleOverrides: {
           paper: {
             backgroundImage: 'none',
-            backgroundColor: colors.bgPaper,
-            border: `1px solid ${colors.border}`,
+            backgroundColor: COLORS.bgPaper,
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 8,
           },
         },
       },
       MuiTooltip: {
         styleOverrides: {
           tooltip: {
-            backgroundColor: colors.bgElevated,
-            border: `1px solid ${colors.border}`,
-            borderRadius: 8,
-            color: colors.textPrimary,
+            backgroundColor: COLORS.bgElevated,
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 6,
+            color: COLORS.textPrimary,
             fontSize: '0.75rem',
           },
         },
@@ -399,23 +274,23 @@ const createAppTheme = (themeKey) => {
       MuiDrawer: {
         styleOverrides: {
           paper: {
-            backgroundColor: colors.bgSidebar,
-            borderRight: `1px solid ${colors.border}`,
+            backgroundColor: COLORS.bgSidebar,
+            borderRight: `1px solid ${COLORS.border}`,
           },
         },
       },
       MuiListItemButton: {
         styleOverrides: {
           root: {
-            borderRadius: 8,
+            borderRadius: 6,
             margin: '2px 8px',
             '&:hover': {
-              backgroundColor: alpha(colors.primary, 0.1),
+              backgroundColor: alpha(COLORS.primary, 0.1),
             },
             '&.Mui-selected': {
-              backgroundColor: alpha(colors.primary, 0.15),
+              backgroundColor: alpha(COLORS.primary, 0.15),
               '&:hover': {
-                backgroundColor: alpha(colors.primary, 0.2),
+                backgroundColor: alpha(COLORS.primary, 0.2),
               },
             },
           },
@@ -425,11 +300,12 @@ const createAppTheme = (themeKey) => {
         styleOverrides: {
           root: {
             '& .MuiOutlinedInput-root': {
+              borderRadius: 6,
               '& fieldset': {
-                borderColor: colors.border,
+                borderColor: COLORS.border,
               },
               '&:hover fieldset': {
-                borderColor: colors.borderHover,
+                borderColor: COLORS.borderHover,
               },
             },
           },
@@ -438,11 +314,12 @@ const createAppTheme = (themeKey) => {
       MuiSelect: {
         styleOverrides: {
           root: {
+            borderRadius: 6,
             '& .MuiOutlinedInput-notchedOutline': {
-              borderColor: colors.border,
+              borderColor: COLORS.border,
             },
             '&:hover .MuiOutlinedInput-notchedOutline': {
-              borderColor: colors.borderHover,
+              borderColor: COLORS.borderHover,
             },
           },
         },
@@ -450,15 +327,16 @@ const createAppTheme = (themeKey) => {
       MuiMenu: {
         styleOverrides: {
           paper: {
-            backgroundColor: colors.bgElevated,
-            border: `1px solid ${colors.border}`,
+            backgroundColor: COLORS.bgPaper,
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 8,
           },
         },
       },
       MuiDivider: {
         styleOverrides: {
           root: {
-            borderColor: colors.border,
+            borderColor: COLORS.border,
           },
         },
       },
@@ -466,40 +344,44 @@ const createAppTheme = (themeKey) => {
         styleOverrides: {
           root: {
             borderRadius: 4,
-            backgroundColor: alpha(colors.border, 0.5),
+            backgroundColor: alpha(COLORS.border, 0.5),
           },
         },
       },
       MuiAlert: {
         styleOverrides: {
           root: {
-            borderRadius: 8,
+            borderRadius: 6,
           },
           standardSuccess: {
-            backgroundColor: alpha(colors.success, 0.1),
-            color: colors.success,
+            backgroundColor: alpha(COLORS.success, 0.1),
+            color: COLORS.success,
+            border: `1px solid ${alpha(COLORS.success, 0.2)}`,
           },
           standardError: {
-            backgroundColor: alpha(colors.error, 0.1),
-            color: colors.error,
+            backgroundColor: alpha(COLORS.error, 0.1),
+            color: COLORS.error,
+            border: `1px solid ${alpha(COLORS.error, 0.2)}`,
           },
           standardWarning: {
-            backgroundColor: alpha(colors.warning, 0.1),
-            color: colors.warning,
+            backgroundColor: alpha(COLORS.warning, 0.1),
+            color: COLORS.warning,
+            border: `1px solid ${alpha(COLORS.warning, 0.2)}`,
           },
           standardInfo: {
-            backgroundColor: alpha(colors.info, 0.1),
-            color: colors.info,
+            backgroundColor: alpha(COLORS.info, 0.1),
+            color: COLORS.info,
+            border: `1px solid ${alpha(COLORS.info, 0.2)}`,
           },
         },
       },
       MuiTableCell: {
         styleOverrides: {
           root: {
-            borderColor: colors.border,
+            borderColor: COLORS.border,
           },
           head: {
-            backgroundColor: colors.bgElevated,
+            backgroundColor: COLORS.bgPaper,
             fontWeight: 600,
           },
         },
@@ -508,8 +390,27 @@ const createAppTheme = (themeKey) => {
         styleOverrides: {
           root: {
             '&:hover': {
-              backgroundColor: colors.bgHover,
+              backgroundColor: alpha(COLORS.primary, 0.04),
             },
+          },
+        },
+      },
+      MuiTabs: {
+        styleOverrides: {
+          root: {
+            minHeight: 40,
+          },
+          indicator: {
+            height: 2,
+          },
+        },
+      },
+      MuiTab: {
+        styleOverrides: {
+          root: {
+            minHeight: 40,
+            textTransform: 'none',
+            fontWeight: 500,
           },
         },
       },
@@ -518,15 +419,14 @@ const createAppTheme = (themeKey) => {
 };
 
 // ============================================
-// THEME CONTEXT
+// THEME CONTEXT (simplified - single theme)
 // ============================================
 
 const ThemeContext = createContext({
-  themeKey: THEME_KEYS.DARK,
-  setThemeKey: () => {},
-  colors: DARK_COLORS,
+  colors: COLORS,
   statusColors: STATUS_COLORS,
   categoryColors: CATEGORY_COLORS,
+  isDark: true,
 });
 
 export const useThemeContext = () => {
@@ -541,54 +441,15 @@ export const useThemeContext = () => {
 // THEME PROVIDER COMPONENT
 // ============================================
 
-const THEME_STORAGE_KEY = 'shield-saas-theme';
-
 export const ThemeProvider = ({ children }) => {
-  const [themeKey, setThemeKeyState] = useState(() => {
-    // Load saved theme from localStorage
-    const saved = localStorage.getItem(THEME_STORAGE_KEY);
-    if (saved && Object.values(THEME_KEYS).includes(saved)) {
-      return saved;
-    }
-    // Default to dark theme
-    return THEME_KEYS.DARK;
-  });
+  const muiTheme = useMemo(() => createAppTheme(), []);
   
-  const setThemeKey = (newTheme) => {
-    if (Object.values(THEME_KEYS).includes(newTheme)) {
-      setThemeKeyState(newTheme);
-      localStorage.setItem(THEME_STORAGE_KEY, newTheme);
-    }
-  };
-  
-  // Create the MUI theme based on current themeKey
-  const muiTheme = useMemo(() => createAppTheme(themeKey), [themeKey]);
-  
-  // Context value
   const contextValue = useMemo(() => ({
-    themeKey,
-    setThemeKey,
-    colors: THEME_COLORS[themeKey],
-    statusColors: getStatusColors(themeKey),
-    categoryColors: getCategoryColors(themeKey),
-    isDark: themeKey !== THEME_KEYS.LIGHT,
-    isBlack: themeKey === THEME_KEYS.BLACK,
-  }), [themeKey]);
-  
-  // Update CSS custom properties for theme
-  useEffect(() => {
-    const colors = THEME_COLORS[themeKey];
-    const root = document.documentElement;
-    
-    root.style.setProperty('--sidebar-bg', colors.bgSidebar);
-    root.style.setProperty('--sidebar-text', colors.textSidebar);
-    root.style.setProperty('--bg-default', colors.bgDefault);
-    root.style.setProperty('--bg-paper', colors.bgPaper);
-    root.style.setProperty('--text-primary', colors.textPrimary);
-    root.style.setProperty('--border-color', colors.border);
-    root.style.setProperty('--primary-color', colors.primary);
-    root.style.setProperty('--secondary-color', colors.secondary);
-  }, [themeKey]);
+    colors: COLORS,
+    statusColors: STATUS_COLORS,
+    categoryColors: CATEGORY_COLORS,
+    isDark: true,
+  }), []);
   
   return (
     <ThemeContext.Provider value={contextValue}>
@@ -601,9 +462,8 @@ export const ThemeProvider = ({ children }) => {
 };
 
 // ============================================
-// DEFAULT EXPORT (backward compatibility)
+// DEFAULT EXPORT
 // ============================================
 
-// Export default dark theme for backward compatibility
-const theme = createAppTheme(THEME_KEYS.DARK);
+const theme = createAppTheme();
 export default theme;

@@ -733,6 +733,11 @@ const PodDetailModal = ({
   const [scalingConfig, setScalingConfig] = useState({ min: 1, max: 3, cpuThreshold: 70 });
   const [showScalingForm, setShowScalingForm] = useState(false);
   
+  // Environment variables config state
+  const [showEnvForm, setShowEnvForm] = useState(false);
+  const [newEnvKey, setNewEnvKey] = useState('');
+  const [newEnvValue, setNewEnvValue] = useState('');
+  
   // Notification state
   const [notification, setNotification] = useState({ open: false, message: '', severity: 'success' });
 
@@ -1003,24 +1008,135 @@ const PodDetailModal = ({
 
         {/* Environment Tab */}
         <TabPanel value={activeTab} index={3}>
+          {/* Add Environment Variable Section */}
+          <Paper sx={{ p: 2, mb: 2, bgcolor: '#1e293b', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: 1 }}>
+            {!showEnvForm ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ color: '#f1f5f9', fontWeight: 600 }}>
+                    Add Environment Variable
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#64748b' }}>
+                    Configure environment variables for your container
+                  </Typography>
+                </Box>
+                <Button
+                  variant="contained"
+                  size="small"
+                  startIcon={<AddIcon />}
+                  onClick={() => setShowEnvForm(true)}
+                  sx={{ bgcolor: '#6366f1', '&:hover': { bgcolor: '#4f46e5' } }}
+                >
+                  Add Variable
+                </Button>
+              </Box>
+            ) : (
+              <Box>
+                <Typography variant="subtitle2" sx={{ color: '#f1f5f9', mb: 2, fontWeight: 600 }}>
+                  New Environment Variable
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                  <TextField
+                    size="small"
+                    label="Key"
+                    placeholder="e.g. DATABASE_URL"
+                    value={newEnvKey}
+                    onChange={(e) => setNewEnvKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_'))}
+                    sx={{ minWidth: 180 }}
+                  />
+                  <TextField
+                    size="small"
+                    label="Value"
+                    placeholder="e.g. postgres://..."
+                    value={newEnvValue}
+                    onChange={(e) => setNewEnvValue(e.target.value)}
+                    sx={{ minWidth: 240, flex: 1 }}
+                  />
+                  <Button
+                    variant="contained"
+                    size="small"
+                    disabled={actionLoading || !newEnvKey || !newEnvValue}
+                    onClick={async () => {
+                      setActionLoading(true);
+                      try {
+                        // Build env vars object from existing + new
+                        const envObj = {};
+                        envVars.forEach(e => { envObj[e.name] = e.value || ''; });
+                        envObj[newEnvKey] = newEnvValue;
+                        
+                        await axios.put(`${API_BASE}/pods/${pod.name}/env`, 
+                          { env_vars: envObj },
+                          { headers: { Authorization: `Bearer ${token}` } }
+                        );
+                        setNotification({ open: true, message: 'Environment variable added. Pod will restart.', severity: 'success' });
+                        setShowEnvForm(false);
+                        setNewEnvKey('');
+                        setNewEnvValue('');
+                        fetchEnvVars();
+                      } catch (err) {
+                        setNotification({ open: true, message: err.response?.data?.detail || 'Failed to add variable', severity: 'error' });
+                      }
+                      setActionLoading(false);
+                    }}
+                    sx={{ bgcolor: '#22c55e', '&:hover': { bgcolor: '#16a34a' } }}
+                  >
+                    {actionLoading ? <CircularProgress size={18} /> : 'Save'}
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={() => { setShowEnvForm(false); setNewEnvKey(''); setNewEnvValue(''); }}
+                    sx={{ color: '#64748b' }}
+                  >
+                    Cancel
+                  </Button>
+                </Box>
+              </Box>
+            )}
+          </Paper>
+
+          {/* Existing Environment Variables */}
           {envVars.length > 0 ? (
-            <Paper sx={{ bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2 }}>
+            <Paper sx={{ bgcolor: '#1e293b', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: 1 }}>
               <List dense>
                 {envVars.map((env, index) => (
-                  <ListItem key={index} divider>
+                  <ListItem key={index} divider sx={{ borderColor: 'rgba(255, 255, 255, 0.04)' }}>
                     <ListItemText
                       primary={env.name}
                       secondary={env.value || '***hidden***'}
-                      primaryTypographyProps={{ color: '#6366f1', fontFamily: 'monospace' }}
-                      secondaryTypographyProps={{ color: '#94a3b8', fontFamily: 'monospace' }}
+                      primaryTypographyProps={{ color: '#6366f1', fontFamily: 'monospace', fontWeight: 500 }}
+                      secondaryTypographyProps={{ color: '#94a3b8', fontFamily: 'monospace', fontSize: '0.8rem' }}
                     />
+                    <IconButton 
+                      size="small" 
+                      onClick={async () => {
+                        setActionLoading(true);
+                        try {
+                          // Remove this env var
+                          const envObj = {};
+                          envVars.forEach(e => { if (e.name !== env.name) envObj[e.name] = e.value || ''; });
+                          
+                          await axios.put(`${API_BASE}/pods/${pod.name}/env`, 
+                            { env_vars: envObj },
+                            { headers: { Authorization: `Bearer ${token}` } }
+                          );
+                          setNotification({ open: true, message: 'Environment variable removed. Pod will restart.', severity: 'success' });
+                          fetchEnvVars();
+                        } catch (err) {
+                          setNotification({ open: true, message: err.response?.data?.detail || 'Failed to remove variable', severity: 'error' });
+                        }
+                        setActionLoading(false);
+                      }}
+                      sx={{ color: '#ef4444', '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.1)' } }}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
                   </ListItem>
                 ))}
               </List>
             </Paper>
           ) : (
-            <Alert severity="info" sx={{ bgcolor: 'rgba(99, 102, 241, 0.1)' }}>
-              No environment variables found
+            <Alert severity="info" sx={{ bgcolor: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
+              No environment variables configured yet
             </Alert>
           )}
         </TabPanel>

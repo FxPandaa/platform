@@ -240,7 +240,7 @@ function Login() {
         </Paper>
         
         <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 3, color: '#475569' }}>
-          Shield SaaS • Kubernetes Platform
+          Self Service Platform • Kubernetes
         </Typography>
       </Container>
     </Box>

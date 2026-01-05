@@ -135,11 +135,10 @@ function Monitoring() {
     if (active && payload && payload.length) {
       return (
         <Box sx={{ 
-          bgcolor: 'rgba(15, 23, 42, 0.95)', 
+          bgcolor: '#1e293b', 
           p: 1.5, 
           borderRadius: 1, 
-          border: '1px solid rgba(99, 102, 241, 0.3)',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+          border: '1px solid rgba(255, 255, 255, 0.06)',
         }}>
           <Typography variant="caption" color="text.secondary">{label}</Typography>
           {payload.map((entry, index) => (
@@ -217,9 +216,9 @@ function Monitoring() {
             {/* Total Pods */}
             <Grid item xs={12} sm={6} md={3}>
               <Card sx={{ 
-                background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(99, 102, 241, 0.05) 100%)',
-                border: '1px solid rgba(99, 102, 241, 0.2)',
-                borderRadius: 3
+                bgcolor: '#1e293b',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
+                borderRadius: 1
               }}>
                 <CardContent>
                   <Box display="flex" alignItems="center" justifyContent="space-between">
@@ -230,15 +229,15 @@ function Monitoring() {
                       </Typography>
                     </Box>
                     <Box sx={{ 
-                      width: 56, 
-                      height: 56, 
-                      borderRadius: 2, 
-                      bgcolor: 'rgba(99, 102, 241, 0.2)',
+                      width: 48, 
+                      height: 48, 
+                      borderRadius: 1, 
+                      bgcolor: 'rgba(99, 102, 241, 0.15)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center'
                     }}>
-                      <DnsIcon sx={{ fontSize: 28, color: 'primary.main' }} />
+                      <DnsIcon sx={{ fontSize: 24, color: 'primary.main' }} />
                     </Box>
                   </Box>
                   <Box display="flex" gap={1} mt={2}>
@@ -246,14 +245,14 @@ function Monitoring() {
                       size="small" 
                       icon={<CheckCircleIcon sx={{ fontSize: 14 }} />}
                       label={`${summary.status_counts?.Running || 0} Running`}
-                      sx={{ bgcolor: 'rgba(34, 197, 94, 0.2)', color: 'success.main', fontSize: '0.7rem' }}
+                      sx={{ bgcolor: 'rgba(34, 197, 94, 0.15)', color: 'success.main', fontSize: '0.7rem' }}
                     />
                     {(summary.status_counts?.Pending || 0) > 0 && (
                       <Chip 
                         size="small" 
                         icon={<ScheduleIcon sx={{ fontSize: 14 }} />}
                         label={`${summary.status_counts?.Pending} Pending`}
-                        sx={{ bgcolor: 'rgba(245, 158, 11, 0.2)', color: 'warning.main', fontSize: '0.7rem' }}
+                        sx={{ bgcolor: 'rgba(245, 158, 11, 0.15)', color: 'warning.main', fontSize: '0.7rem' }}
                       />
                     )}
                   </Box>
@@ -264,29 +263,29 @@ function Monitoring() {
             {/* CPU Usage */}
             <Grid item xs={12} sm={6} md={3}>
               <Card sx={{ 
-                background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(6, 182, 212, 0.05) 100%)',
-                border: '1px solid rgba(6, 182, 212, 0.2)',
-                borderRadius: 3
+                bgcolor: '#1e293b',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
+                borderRadius: 1
               }}>
                 <CardContent>
                   <Box display="flex" alignItems="center" justifyContent="space-between">
                     <Box>
                       <Typography variant="overline" color="text.secondary">CPU Usage</Typography>
-                      <Typography variant="h3" fontWeight="bold" sx={{ color: COLORS.cyan }}>
+                      <Typography variant="h3" fontWeight="bold" sx={{ color: COLORS.cpu }}>
                         {summary.total_cpu_millicores?.toFixed(0) || 0}
                         <Typography component="span" variant="h6" color="text.secondary">m</Typography>
                       </Typography>
                     </Box>
                     <Box sx={{ 
-                      width: 56, 
-                      height: 56, 
-                      borderRadius: 2, 
-                      bgcolor: 'rgba(6, 182, 212, 0.2)',
+                      width: 48, 
+                      height: 48, 
+                      borderRadius: 1, 
+                      bgcolor: 'rgba(6, 182, 212, 0.15)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center'
                     }}>
-                      <SpeedIcon sx={{ fontSize: 28, color: COLORS.cyan }} />
+                      <SpeedIcon sx={{ fontSize: 24, color: COLORS.cpu }} />
                     </Box>
                   </Box>
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
@@ -299,29 +298,29 @@ function Monitoring() {
             {/* Memory Usage */}
             <Grid item xs={12} sm={6} md={3}>
               <Card sx={{ 
-                background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.1) 0%, rgba(168, 85, 247, 0.05) 100%)',
-                border: '1px solid rgba(168, 85, 247, 0.2)',
-                borderRadius: 3
+                bgcolor: '#1e293b',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
+                borderRadius: 1
               }}>
                 <CardContent>
                   <Box display="flex" alignItems="center" justifyContent="space-between">
                     <Box>
                       <Typography variant="overline" color="text.secondary">Memory Usage</Typography>
-                      <Typography variant="h3" fontWeight="bold" sx={{ color: COLORS.purple }}>
+                      <Typography variant="h3" fontWeight="bold" sx={{ color: COLORS.memory }}>
                         {summary.total_memory_mi?.toFixed(0) || 0}
                         <Typography component="span" variant="h6" color="text.secondary">Mi</Typography>
                       </Typography>
                     </Box>
                     <Box sx={{ 
-                      width: 56, 
-                      height: 56, 
-                      borderRadius: 2, 
-                      bgcolor: 'rgba(168, 85, 247, 0.2)',
+                      width: 48, 
+                      height: 48, 
+                      borderRadius: 1, 
+                      bgcolor: 'rgba(139, 92, 246, 0.15)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center'
                     }}>
-                      <MemoryIcon sx={{ fontSize: 28, color: COLORS.purple }} />
+                      <MemoryIcon sx={{ fontSize: 24, color: COLORS.memory }} />
                     </Box>
                   </Box>
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
@@ -334,9 +333,9 @@ function Monitoring() {
             {/* Monthly Cost */}
             <Grid item xs={12} sm={6} md={3}>
               <Card sx={{ 
-                background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(34, 197, 94, 0.05) 100%)',
-                border: '1px solid rgba(34, 197, 94, 0.2)',
-                borderRadius: 3
+                bgcolor: '#1e293b',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
+                borderRadius: 1
               }}>
                 <CardContent>
                   <Box display="flex" alignItems="center" justifyContent="space-between">
@@ -347,15 +346,15 @@ function Monitoring() {
                       </Typography>
                     </Box>
                     <Box sx={{ 
-                      width: 56, 
-                      height: 56, 
-                      borderRadius: 2, 
-                      bgcolor: 'rgba(34, 197, 94, 0.2)',
+                      width: 48, 
+                      height: 48, 
+                      borderRadius: 1, 
+                      bgcolor: 'rgba(34, 197, 94, 0.15)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center'
                     }}>
-                      <EuroIcon sx={{ fontSize: 28, color: COLORS.success }} />
+                      <EuroIcon sx={{ fontSize: 24, color: COLORS.success }} />
                     </Box>
                   </Box>
                   <Box sx={{ mt: 2 }}>
@@ -381,9 +380,9 @@ function Monitoring() {
             {/* Resource Usage Over Time */}
             <Grid item xs={12} md={8}>
               <Card sx={{ 
-                bgcolor: 'rgba(30, 41, 59, 0.5)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: 3,
+                bgcolor: '#1e293b',
+                border: '1px solid rgba(255,255,255,0.06)',
+                borderRadius: 1,
                 height: 350
               }}>
                 <CardContent>
@@ -434,9 +433,9 @@ function Monitoring() {
             {/* Pod Status Distribution */}
             <Grid item xs={12} md={4}>
               <Card sx={{ 
-                bgcolor: 'rgba(30, 41, 59, 0.5)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: 3,
+                bgcolor: '#1e293b',
+                border: '1px solid rgba(255,255,255,0.06)',
+                borderRadius: 1,
                 height: 350
               }}>
                 <CardContent>
@@ -481,9 +480,9 @@ function Monitoring() {
             {/* Per-Pod Resource Usage */}
             <Grid item xs={12} md={8}>
               <Card sx={{ 
-                bgcolor: 'rgba(30, 41, 59, 0.5)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: 3,
+                bgcolor: '#1e293b',
+                border: '1px solid rgba(255,255,255,0.06)',
+                borderRadius: 1,
                 height: 350
               }}>
                 <CardContent>
@@ -501,10 +500,10 @@ function Monitoring() {
                             if (active && payload && payload.length) {
                               return (
                                 <Box sx={{ 
-                                  bgcolor: 'rgba(15, 23, 42, 0.95)', 
+                                  bgcolor: '#1e293b', 
                                   p: 1.5, 
                                   borderRadius: 1, 
-                                  border: '1px solid rgba(99, 102, 241, 0.3)'
+                                  border: '1px solid rgba(255, 255, 255, 0.06)'
                                 }}>
                                   <Typography variant="body2" color="text.primary" fontWeight="bold">
                                     {payload[0]?.payload?.fullName}
@@ -538,9 +537,9 @@ function Monitoring() {
             {/* Pod Categories */}
             <Grid item xs={12} md={4}>
               <Card sx={{ 
-                bgcolor: 'rgba(30, 41, 59, 0.5)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: 3,
+                bgcolor: '#1e293b',
+                border: '1px solid rgba(255,255,255,0.06)',
+                borderRadius: 1,
                 height: 350
               }}>
                 <CardContent>
@@ -582,9 +581,9 @@ function Monitoring() {
         {/* Pods Table */}
         <Fade in timeout={1100}>
           <Card sx={{ 
-            bgcolor: 'rgba(30, 41, 59, 0.5)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: 3,
+            bgcolor: '#1e293b',
+            border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: 1,
             mb: 4
           }}>
             <CardContent>
@@ -595,7 +594,7 @@ function Monitoring() {
                 <Chip 
                   label={`${pods.length} pods`}
                   size="small"
-                  sx={{ bgcolor: 'rgba(99, 102, 241, 0.2)', color: 'primary.main' }}
+                  sx={{ bgcolor: 'rgba(99, 102, 241, 0.15)', color: 'primary.main' }}
                 />
               </Box>
               
@@ -695,9 +694,9 @@ function Monitoring() {
         {/* Deployments with Scaling Info */}
         <Fade in timeout={1300}>
           <Card sx={{ 
-            bgcolor: 'rgba(30, 41, 59, 0.5)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: 3
+            bgcolor: '#1e293b',
+            border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: 1
           }}>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
@@ -708,7 +707,7 @@ function Monitoring() {
                   icon={<LayersIcon sx={{ fontSize: 14 }} />}
                   label={`${deployments.length} deployments`}
                   size="small"
-                  sx={{ bgcolor: 'rgba(168, 85, 247, 0.2)', color: COLORS.purple }}
+                  sx={{ bgcolor: 'rgba(139, 92, 246, 0.15)', color: COLORS.memory }}
                 />
               </Box>
               
@@ -717,9 +716,9 @@ function Monitoring() {
                   <Grid item xs={12} sm={6} md={4} key={deployment.name}>
                     <Box sx={{ 
                       p: 2, 
-                      bgcolor: 'rgba(0,0,0,0.2)', 
-                      borderRadius: 2,
-                      border: '1px solid rgba(255,255,255,0.05)'
+                      bgcolor: 'rgba(255,255,255,0.02)', 
+                      borderRadius: 1,
+                      border: '1px solid rgba(255,255,255,0.04)'
                     }}>
                       <Typography variant="subtitle2" fontWeight="bold" gutterBottom noWrap>
                         {deployment.name}
