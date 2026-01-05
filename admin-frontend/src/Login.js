@@ -37,11 +37,15 @@ function Login() {
     setLoading(true);
 
     try {
-      const formData = new FormData();
+      const formData = new URLSearchParams();
       formData.append('username', username);
       formData.append('password', password);
       
-      const response = await axios.post(`${BACKEND_URL}/token`, formData);
+      const response = await axios.post(`${BACKEND_URL}/token`, formData, {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      });
       
       if (!response.data.is_admin) {
         setError('Access denied. Administrator privileges required.');
@@ -52,7 +56,8 @@ function Login() {
       localStorage.setItem('admin_token', response.data.access_token);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.detail || 'Authentication failed');
+      console.error('Login error:', err);
+      setError(err.response?.data?.detail || 'Authentication failed. Check if backend is running.');
     } finally {
       setLoading(false);
     }

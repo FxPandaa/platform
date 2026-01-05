@@ -257,6 +257,8 @@ class PodInfo(BaseModel):
     cost: float
     type: str
     age: str
+    image: Optional[str] = None
+    restarts: Optional[int] = 0
     message: Optional[str] = None
     pod_ip: Optional[str] = None
     node_name: Optional[str] = None
@@ -562,12 +564,22 @@ def get_pods(current_user: User = Depends(get_current_user)):
                 except Exception as feature_err:
                     print(f"  Warning: Could not fetch feature status: {feature_err}")
 
+                # Get image and restarts
+                image = None
+                restarts = 0
+                if p.spec.containers:
+                    image = p.spec.containers[0].image
+                if p.status.container_statuses:
+                    restarts = sum(cs.restart_count for cs in p.status.container_statuses if cs.restart_count)
+
                 pod_info = PodInfo(
                     name=p.metadata.name,
                     status=status,
                     cost=cost,
                     type=app_type,
                     age=age,
+                    image=image,
+                    restarts=restarts,
                     pod_ip=pod_ip,
                     node_name=node_name,
                     public_ip=public_ip,
