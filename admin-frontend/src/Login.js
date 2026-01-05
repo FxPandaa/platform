@@ -8,10 +8,17 @@ import {
   Paper, 
   Container, 
   Alert,
-  Fade,
-  CircularProgress
+  CircularProgress,
+  InputAdornment,
+  IconButton,
 } from '@mui/material';
-import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import {
+  AdminPanelSettings as AdminIcon,
+  Person as PersonIcon,
+  Lock as LockIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
+} from '@mui/icons-material';
 import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://192.168.154.114:30001";
@@ -19,6 +26,7 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://192.168.154.114
 function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -35,9 +43,8 @@ function Login() {
       
       const response = await axios.post(`${BACKEND_URL}/token`, formData);
       
-      // Check if user is admin
       if (!response.data.is_admin) {
-        setError('This portal is for administrators only.');
+        setError('Access denied. Administrator privileges required.');
         setLoading(false);
         return;
       }
@@ -45,7 +52,7 @@ function Login() {
       localStorage.setItem('admin_token', response.data.access_token);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.detail || 'Something went wrong');
+      setError(err.response?.data?.detail || 'Authentication failed');
     } finally {
       setLoading(false);
     }
@@ -58,124 +65,141 @@ function Login() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        bgcolor: 'background.default',
-        background: 'radial-gradient(ellipse at top, #1e293b 0%, #0f172a 50%, #020617 100%)',
+        bgcolor: '#0f172a',
+        position: 'relative',
+        overflow: 'hidden',
       }}
     >
-      <Container maxWidth="xs">
-        <Fade in timeout={800}>
-          <Paper 
-            elevation={0} 
-            sx={{ 
-              p: 5, 
-              borderRadius: 4, 
-              bgcolor: 'rgba(30, 41, 59, 0.8)',
-              backdropFilter: 'blur(20px)',
-              border: '1px solid rgba(245, 158, 11, 0.2)',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 100px rgba(245, 158, 11, 0.1)'
-            }}
-          >
-            {/* Logo Area */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 4 }}>
-              <Box 
-                sx={{ 
-                  width: 70, 
-                  height: 70, 
-                  borderRadius: '20px', 
-                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 50%, #b45309 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  mb: 2,
-                  boxShadow: '0 10px 40px rgba(245, 158, 11, 0.4)'
-                }}
-              >
-                <AdminPanelSettingsIcon sx={{ fontSize: 40, color: 'white' }} />
-              </Box>
-              <Typography 
-                variant="h5" 
-                align="center" 
-                sx={{ 
-                  fontWeight: 700, 
-                  background: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)',
-                  backgroundClip: 'text',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                }}
-              >
-                Admin Portal
-              </Typography>
-              <Typography variant="body2" align="center" sx={{ color: 'text.secondary', mt: 1 }}>
-                Platform Administration
-              </Typography>
-            </Box>
-
-            {error && (
-              <Fade in>
-                <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>{error}</Alert>
-              </Fade>
-            )}
-
-            <form onSubmit={handleSubmit}>
-              <TextField
-                fullWidth
-                label="Admin Username"
-                variant="outlined"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                disabled={loading}
-                sx={{ mb: 2.5 }}
-              />
-              <TextField
-                fullWidth
-                label="Password"
-                type="password"
-                variant="outlined"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={loading}
-                sx={{ mb: 3.5 }}
-              />
-              
-              <Button 
-                fullWidth 
-                type="submit" 
-                variant="contained" 
-                size="large"
-                disabled={loading}
-                sx={{ 
-                  py: 1.8,
-                  fontSize: '1rem',
-                  fontWeight: 600,
-                  borderRadius: 2,
-                  textTransform: 'none',
-                  position: 'relative'
-                }}
-              >
-                {loading ? (
-                  <CircularProgress size={24} sx={{ color: 'white' }} />
-                ) : (
-                  'Sign In'
-                )}
-              </Button>
-            </form>
-          </Paper>
-        </Fade>
-        
-        {/* Footer */}
-        <Typography 
-          variant="caption" 
+      {/* Subtle background pattern */}
+      <Box sx={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'radial-gradient(circle at 20% 80%, rgba(245, 158, 11, 0.08) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(99, 102, 241, 0.06) 0%, transparent 50%)',
+        pointerEvents: 'none',
+      }} />
+      
+      <Container maxWidth="xs" sx={{ position: 'relative', zIndex: 1 }}>
+        <Paper 
+          elevation={0} 
           sx={{ 
-            display: 'block', 
-            textAlign: 'center', 
-            mt: 4, 
-            color: 'text.secondary',
-            opacity: 0.6
+            p: 4, 
+            borderRadius: 2, 
+            bgcolor: '#1e293b',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
           }}
         >
-          Shield SaaS - Platform Administration
+          {/* Header */}
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 4 }}>
+            <Box 
+              sx={{ 
+                width: 52, 
+                height: 52, 
+                borderRadius: 1.5, 
+                bgcolor: '#f59e0b',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                mb: 2,
+              }}
+            >
+              <AdminIcon sx={{ fontSize: 28, color: '#fff' }} />
+            </Box>
+            <Typography variant="h5" sx={{ fontWeight: 600, color: '#f1f5f9', mb: 0.5 }}>
+              Admin Portal
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#64748b' }}>
+              Sign in to manage the platform
+            </Typography>
+          </Box>
+
+          {error && (
+            <Alert 
+              severity="error" 
+              sx={{ 
+                mb: 3, 
+                borderRadius: 1.5,
+                bgcolor: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                '& .MuiAlert-icon': { color: '#ef4444' }
+              }}
+            >
+              {error}
+            </Alert>
+          )}
+
+          <form onSubmit={handleSubmit}>
+            <TextField
+              fullWidth
+              label="Username"
+              variant="outlined"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              disabled={loading}
+              sx={{ mb: 2 }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <PersonIcon sx={{ color: '#64748b', fontSize: 20 }} />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <TextField
+              fullWidth
+              label="Password"
+              type={showPassword ? 'text' : 'password'}
+              variant="outlined"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              disabled={loading}
+              sx={{ mb: 3 }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <LockIcon sx={{ color: '#64748b', fontSize: 20 }} />
+                  </InputAdornment>
+                ),
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      size="small"
+                      onClick={() => setShowPassword(!showPassword)}
+                      sx={{ color: '#64748b' }}
+                    >
+                      {showPassword ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+            
+            <Button 
+              fullWidth 
+              type="submit" 
+              variant="contained" 
+              size="large"
+              disabled={loading || !username || !password}
+              sx={{ 
+                py: 1.5,
+                bgcolor: '#f59e0b',
+                fontWeight: 600,
+                textTransform: 'none',
+                '&:hover': { bgcolor: '#d97706' },
+                '&:disabled': { bgcolor: 'rgba(245, 158, 11, 0.3)', color: 'rgba(255,255,255,0.5)' }
+              }}
+            >
+              {loading ? <CircularProgress size={22} sx={{ color: '#fff' }} /> : 'Sign In'}
+            </Button>
+          </form>
+        </Paper>
+        
+        <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 3, color: '#475569' }}>
+          Shield SaaS Platform • Admin Access
         </Typography>
       </Container>
     </Box>

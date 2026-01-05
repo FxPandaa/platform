@@ -8,10 +8,20 @@ import {
   Paper, 
   Container, 
   Alert,
-  Fade,
-  CircularProgress
+  CircularProgress,
+  InputAdornment,
+  IconButton,
+  Collapse,
+  Divider,
 } from '@mui/material';
-import CloudQueueIcon from '@mui/icons-material/CloudQueue';
+import {
+  CloudQueue as CloudIcon,
+  Person as PersonIcon,
+  Lock as LockIcon,
+  Business as BusinessIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
+} from '@mui/icons-material';
 import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://192.168.154.114:30001";
@@ -20,6 +30,7 @@ function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [companyName, setCompanyName] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -40,7 +51,7 @@ function Login() {
           company_name: companyName
         });
         setIsRegistering(false);
-        setSuccess('Account created successfully! Please login.');
+        setSuccess('Account created! You can now sign in.');
         setUsername('');
         setPassword('');
         setCompanyName('');
@@ -51,9 +62,8 @@ function Login() {
         
         const response = await axios.post(`${BACKEND_URL}/token`, formData);
         
-        // Check if user is admin - admins should use admin portal
         if (response.data.is_admin) {
-          setError('Admin accounts must use the Admin Portal to login.');
+          setError('Please use the Admin Portal for administrator access.');
           setLoading(false);
           return;
         }
@@ -63,7 +73,7 @@ function Login() {
         navigate('/dashboard');
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Something went wrong');
+      setError(err.response?.data?.detail || 'Authentication failed');
     } finally {
       setLoading(false);
     }
@@ -76,169 +86,161 @@ function Login() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        bgcolor: 'background.default',
-        background: 'radial-gradient(ellipse at top, #1e293b 0%, #0f172a 50%, #020617 100%)',
+        bgcolor: '#0f172a',
+        position: 'relative',
+        overflow: 'hidden',
       }}
     >
-      <Container maxWidth="xs">
-        <Fade in timeout={800}>
-          <Paper 
-            elevation={0} 
-            sx={{ 
-              p: 5, 
-              borderRadius: 4, 
-              bgcolor: 'rgba(30, 41, 59, 0.8)',
-              backdropFilter: 'blur(20px)',
-              border: '1px solid rgba(99, 102, 241, 0.2)',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 100px rgba(99, 102, 241, 0.1)'
-            }}
-          >
-            {/* Logo Area */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 4 }}>
-              <Box 
-                sx={{ 
-                  width: 70, 
-                  height: 70, 
-                  borderRadius: '20px', 
-                  background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  mb: 2,
-                  boxShadow: '0 10px 40px rgba(99, 102, 241, 0.4)'
-                }}
-              >
-                <CloudQueueIcon sx={{ fontSize: 40, color: 'white' }} />
-              </Box>
-              <Typography 
-                variant="h5" 
-                align="center" 
-                sx={{ 
-                  fontWeight: 700, 
-                  background: 'linear-gradient(135deg, #f8fafc 0%, #94a3b8 100%)',
-                  backgroundClip: 'text',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                }}
-              >
-                {isRegistering ? 'Create Account' : 'Welcome Back'}
-              </Typography>
-              <Typography variant="body2" align="center" sx={{ color: 'text.secondary', mt: 1 }}>
-                Self-Service Kubernetes Platform
-              </Typography>
-            </Box>
-
-            {error && (
-              <Fade in>
-                <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>{error}</Alert>
-              </Fade>
-            )}
-            
-            {success && (
-              <Fade in>
-                <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>{success}</Alert>
-              </Fade>
-            )}
-
-            <form onSubmit={handleSubmit}>
-              <TextField
-                fullWidth
-                label="Username"
-                variant="outlined"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                disabled={loading}
-                sx={{ mb: 2.5 }}
-              />
-              {isRegistering && (
-                <Fade in={isRegistering}>
-                  <TextField
-                    fullWidth
-                    label="Company Name"
-                    variant="outlined"
-                    value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
-                    required
-                    disabled={loading}
-                    sx={{ mb: 2.5 }}
-                  />
-                </Fade>
-              )}
-              <TextField
-                fullWidth
-                label="Password"
-                type="password"
-                variant="outlined"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={loading}
-                sx={{ mb: 3.5 }}
-              />
-              
-              <Button 
-                fullWidth 
-                type="submit" 
-                variant="contained" 
-                size="large"
-                disabled={loading}
-                sx={{ 
-                  py: 1.8,
-                  fontSize: '1rem',
-                  fontWeight: 600,
-                  borderRadius: 2,
-                  textTransform: 'none',
-                  position: 'relative'
-                }}
-              >
-                {loading ? (
-                  <CircularProgress size={24} sx={{ color: 'white' }} />
-                ) : (
-                  isRegistering ? 'Create Account' : 'Sign In'
-                )}
-              </Button>
-            </form>
-
-            <Box sx={{ mt: 3, textAlign: 'center' }}>
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                {isRegistering ? 'Already have an account?' : "Don't have an account?"}
-              </Typography>
-              <Button 
-                sx={{ 
-                  mt: 0.5, 
-                  color: 'primary.main',
-                  fontWeight: 600,
-                  textTransform: 'none',
-                  '&:hover': {
-                    background: 'rgba(99, 102, 241, 0.1)'
-                  }
-                }}
-                onClick={() => {
-                  setIsRegistering(!isRegistering);
-                  setError('');
-                  setSuccess('');
-                }}
-                disabled={loading}
-              >
-                {isRegistering ? 'Sign In' : 'Create Account'}
-              </Button>
-            </Box>
-          </Paper>
-        </Fade>
-        
-        {/* Footer */}
-        <Typography 
-          variant="caption" 
+      {/* Background */}
+      <Box sx={{
+        position: 'absolute',
+        top: 0, left: 0, right: 0, bottom: 0,
+        background: 'radial-gradient(circle at 30% 70%, rgba(99, 102, 241, 0.08) 0%, transparent 50%), radial-gradient(circle at 70% 30%, rgba(139, 92, 246, 0.06) 0%, transparent 50%)',
+        pointerEvents: 'none',
+      }} />
+      
+      <Container maxWidth="xs" sx={{ position: 'relative', zIndex: 1 }}>
+        <Paper 
+          elevation={0} 
           sx={{ 
-            display: 'block', 
-            textAlign: 'center', 
-            mt: 4, 
-            color: 'text.secondary',
-            opacity: 0.6
+            p: 4, 
+            borderRadius: 2, 
+            bgcolor: '#1e293b',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
           }}
         >
-          Enterprise Kubernetes Management Platform
+          {/* Header */}
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 4 }}>
+            <Box 
+              sx={{ 
+                width: 52, 
+                height: 52, 
+                borderRadius: 1.5, 
+                bgcolor: '#6366f1',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                mb: 2,
+              }}
+            >
+              <CloudIcon sx={{ fontSize: 28, color: '#fff' }} />
+            </Box>
+            <Typography variant="h5" sx={{ fontWeight: 600, color: '#f1f5f9', mb: 0.5 }}>
+              {isRegistering ? 'Create Account' : 'Welcome Back'}
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#64748b' }}>
+              Kubernetes Self-Service Platform
+            </Typography>
+          </Box>
+
+          {error && (
+            <Alert 
+              severity="error" 
+              sx={{ mb: 2.5, borderRadius: 1.5, bgcolor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', '& .MuiAlert-icon': { color: '#ef4444' } }}
+            >
+              {error}
+            </Alert>
+          )}
+          
+          {success && (
+            <Alert 
+              severity="success" 
+              sx={{ mb: 2.5, borderRadius: 1.5, bgcolor: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.2)', '& .MuiAlert-icon': { color: '#22c55e' } }}
+            >
+              {success}
+            </Alert>
+          )}
+
+          <form onSubmit={handleSubmit}>
+            <TextField
+              fullWidth
+              label="Username"
+              variant="outlined"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              disabled={loading}
+              sx={{ mb: 2 }}
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><PersonIcon sx={{ color: '#64748b', fontSize: 20 }} /></InputAdornment>
+              }}
+            />
+            
+            <Collapse in={isRegistering}>
+              <TextField
+                fullWidth
+                label="Company Name"
+                variant="outlined"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                required={isRegistering}
+                disabled={loading}
+                sx={{ mb: 2 }}
+                InputProps={{
+                  startAdornment: <InputAdornment position="start"><BusinessIcon sx={{ color: '#64748b', fontSize: 20 }} /></InputAdornment>
+                }}
+              />
+            </Collapse>
+            
+            <TextField
+              fullWidth
+              label="Password"
+              type={showPassword ? 'text' : 'password'}
+              variant="outlined"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              disabled={loading}
+              sx={{ mb: 3 }}
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><LockIcon sx={{ color: '#64748b', fontSize: 20 }} /></InputAdornment>,
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={() => setShowPassword(!showPassword)} sx={{ color: '#64748b' }}>
+                      {showPassword ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+            
+            <Button 
+              fullWidth 
+              type="submit" 
+              variant="contained" 
+              size="large"
+              disabled={loading || !username || !password || (isRegistering && !companyName)}
+              sx={{ 
+                py: 1.5,
+                bgcolor: '#6366f1',
+                fontWeight: 600,
+                textTransform: 'none',
+                '&:hover': { bgcolor: '#4f46e5' },
+                '&:disabled': { bgcolor: 'rgba(99, 102, 241, 0.3)', color: 'rgba(255,255,255,0.5)' }
+              }}
+            >
+              {loading ? <CircularProgress size={22} sx={{ color: '#fff' }} /> : (isRegistering ? 'Create Account' : 'Sign In')}
+            </Button>
+          </form>
+
+          <Divider sx={{ my: 3, borderColor: 'rgba(255,255,255,0.06)' }} />
+
+          <Box sx={{ textAlign: 'center' }}>
+            <Typography variant="body2" sx={{ color: '#64748b', mb: 1 }}>
+              {isRegistering ? 'Already have an account?' : "Don't have an account?"}
+            </Typography>
+            <Button 
+              onClick={() => { setIsRegistering(!isRegistering); setError(''); setSuccess(''); }}
+              disabled={loading}
+              sx={{ color: '#6366f1', fontWeight: 500, textTransform: 'none', '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.08)' } }}
+            >
+              {isRegistering ? 'Sign In' : 'Create Account'}
+            </Button>
+          </Box>
+        </Paper>
+        
+        <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 3, color: '#475569' }}>
+          Shield SaaS • Kubernetes Platform
         </Typography>
       </Container>
     </Box>

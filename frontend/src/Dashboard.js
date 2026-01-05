@@ -709,7 +709,7 @@ const EusuiteCard = React.memo(({
   );
 });
 
-// Pod Detail Modal Component
+// Pod Detail Modal Component with Add Storage/Scaling/Backup functionality
 const PodDetailModal = ({ 
   open, 
   onClose, 
@@ -723,6 +723,18 @@ const PodDetailModal = ({
   const [envVars, setEnvVars] = useState([]);
   const [storage, setStorage] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  
+  // Storage config state
+  const [storageSize, setStorageSize] = useState('1Gi');
+  const [showStorageForm, setShowStorageForm] = useState(false);
+  
+  // Scaling config state
+  const [scalingConfig, setScalingConfig] = useState({ min: 1, max: 3, cpuThreshold: 70 });
+  const [showScalingForm, setShowScalingForm] = useState(false);
+  
+  // Notification state
+  const [notification, setNotification] = useState({ open: false, message: '', severity: 'success' });
 
   const fetchLogs = useCallback(async () => {
     if (!pod) return;
@@ -1013,10 +1025,103 @@ const PodDetailModal = ({
           )}
         </TabPanel>
 
-        {/* Storage Tab */}
+        {/* Storage Tab - with Add Storage functionality */}
         <TabPanel value={activeTab} index={4}>
-          {storage.length > 0 ? (
+          {/* Add Storage Section */}
+          {!pod?.has_storage && (
+            <Paper sx={{ p: 2.5, mb: 2, bgcolor: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.2)', borderRadius: 2 }}>
+              {!showStorageForm ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ color: '#e2e8f0', fontWeight: 600 }}>
+                      Add Persistent Storage
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#94a3b8' }}>
+                      Attach persistent volume to keep your data safe
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    startIcon={<AddIcon />}
+                    onClick={() => setShowStorageForm(true)}
+                    sx={{ bgcolor: '#6366f1', '&:hover': { bgcolor: '#4f46e5' } }}
+                  >
+                    Add Storage
+                  </Button>
+                </Box>
+              ) : (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ color: '#e2e8f0', mb: 2 }}>
+                    Configure Storage
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-end' }}>
+                    <FormControl size="small" sx={{ minWidth: 120 }}>
+                      <InputLabel sx={{ color: '#94a3b8' }}>Size</InputLabel>
+                      <Select
+                        value={storageSize}
+                        onChange={(e) => setStorageSize(e.target.value)}
+                        label="Size"
+                        sx={{ '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(99, 102, 241, 0.3)' } }}
+                      >
+                        <MenuItem value="1Gi">1 GB</MenuItem>
+                        <MenuItem value="2Gi">2 GB</MenuItem>
+                        <MenuItem value="5Gi">5 GB</MenuItem>
+                        <MenuItem value="10Gi">10 GB</MenuItem>
+                        <MenuItem value="20Gi">20 GB</MenuItem>
+                      </Select>
+                    </FormControl>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      disabled={actionLoading}
+                      onClick={async () => {
+                        setActionLoading(true);
+                        try {
+                          await axios.post(`${API_BASE}/pods/${pod.name}/storage`, { size: storageSize }, {
+                            headers: { Authorization: `Bearer ${token}` }
+                          });
+                          setNotification({ open: true, message: 'Storage added successfully', severity: 'success' });
+                          setShowStorageForm(false);
+                          fetchStorage();
+                          if (onRefresh) onRefresh();
+                        } catch (err) {
+                          setNotification({ open: true, message: err.response?.data?.detail || 'Failed to add storage', severity: 'error' });
+                        }
+                        setActionLoading(false);
+                      }}
+                      sx={{ bgcolor: '#10b981', '&:hover': { bgcolor: '#059669' } }}
+                    >
+                      {actionLoading ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : 'Create'}
+                    </Button>
+                    <Button size="small" onClick={() => setShowStorageForm(false)} sx={{ color: '#94a3b8' }}>
+                      Cancel
+                    </Button>
+                  </Box>
+                </Box>
+              )}
+            </Paper>
+          )}
+          
+          {/* Existing Storage List */}
+          {storage.length > 0 || pod?.has_storage ? (
             <List>
+              {pod?.has_storage && (
+                <Paper sx={{ mb: 1, bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2, border: '1px solid rgba(99, 102, 241, 0.15)' }}>
+                  <ListItem>
+                    <ListItemIcon>
+                      <StorageIcon sx={{ color: '#10b981' }} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={`Persistent Volume - ${pod.storage_size || 'Active'}`}
+                      secondary="ReadWriteOnce • Bound"
+                      primaryTypographyProps={{ color: '#e2e8f0', fontWeight: 500 }}
+                      secondaryTypographyProps={{ color: '#10b981' }}
+                    />
+                    <Chip label="Active" size="small" sx={{ bgcolor: 'rgba(16, 185, 129, 0.15)', color: '#10b981' }} />
+                  </ListItem>
+                </Paper>
+              )}
               {storage.map((vol, index) => (
                 <Paper key={index} sx={{ mb: 1, bgcolor: 'rgba(15, 23, 42, 0.5)', borderRadius: 2 }}>
                   <ListItem>
@@ -1035,9 +1140,116 @@ const PodDetailModal = ({
             </List>
           ) : (
             <Alert severity="info" sx={{ bgcolor: 'rgba(99, 102, 241, 0.1)' }}>
-              No storage volumes attached
+              No storage volumes attached. Click "Add Storage" to attach persistent storage.
             </Alert>
           )}
+          
+          {/* Scaling Section */}
+          <Box sx={{ mt: 3 }}>
+            <Typography variant="subtitle2" sx={{ color: '#94a3b8', mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <ScaleIcon sx={{ fontSize: 18 }} /> Auto-Scaling
+            </Typography>
+            {!pod?.has_autoscaling && !showScalingForm ? (
+              <Paper sx={{ p: 2.5, bgcolor: 'rgba(251, 191, 36, 0.08)', border: '1px solid rgba(251, 191, 36, 0.2)', borderRadius: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Box>
+                    <Typography variant="body2" sx={{ color: '#e2e8f0', fontWeight: 500 }}>
+                      Enable Auto-Scaling
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#94a3b8' }}>
+                      Automatically scale pods based on CPU usage
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => setShowScalingForm(true)}
+                    sx={{ borderColor: '#fbbf24', color: '#fbbf24', '&:hover': { borderColor: '#f59e0b', bgcolor: 'rgba(251, 191, 36, 0.1)' } }}
+                  >
+                    Configure
+                  </Button>
+                </Box>
+              </Paper>
+            ) : showScalingForm ? (
+              <Paper sx={{ p: 2.5, bgcolor: 'rgba(251, 191, 36, 0.08)', border: '1px solid rgba(251, 191, 36, 0.2)', borderRadius: 2 }}>
+                <Grid container spacing={2}>
+                  <Grid item xs={4}>
+                    <TextField
+                      label="Min Replicas"
+                      type="number"
+                      size="small"
+                      fullWidth
+                      value={scalingConfig.min}
+                      onChange={(e) => setScalingConfig(prev => ({ ...prev, min: parseInt(e.target.value) || 1 }))}
+                      inputProps={{ min: 1, max: 10 }}
+                    />
+                  </Grid>
+                  <Grid item xs={4}>
+                    <TextField
+                      label="Max Replicas"
+                      type="number"
+                      size="small"
+                      fullWidth
+                      value={scalingConfig.max}
+                      onChange={(e) => setScalingConfig(prev => ({ ...prev, max: parseInt(e.target.value) || 3 }))}
+                      inputProps={{ min: 1, max: 10 }}
+                    />
+                  </Grid>
+                  <Grid item xs={4}>
+                    <TextField
+                      label="CPU Threshold %"
+                      type="number"
+                      size="small"
+                      fullWidth
+                      value={scalingConfig.cpuThreshold}
+                      onChange={(e) => setScalingConfig(prev => ({ ...prev, cpuThreshold: parseInt(e.target.value) || 70 }))}
+                      inputProps={{ min: 10, max: 100 }}
+                    />
+                  </Grid>
+                </Grid>
+                <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    disabled={actionLoading}
+                    onClick={async () => {
+                      setActionLoading(true);
+                      try {
+                        await axios.post(`${API_BASE}/pods/${pod.name}/scaling`, {
+                          min_replicas: scalingConfig.min,
+                          max_replicas: scalingConfig.max,
+                          cpu_threshold: scalingConfig.cpuThreshold
+                        }, { headers: { Authorization: `Bearer ${token}` } });
+                        setNotification({ open: true, message: 'Auto-scaling configured successfully', severity: 'success' });
+                        setShowScalingForm(false);
+                        if (onRefresh) onRefresh();
+                      } catch (err) {
+                        setNotification({ open: true, message: err.response?.data?.detail || 'Failed to configure scaling', severity: 'error' });
+                      }
+                      setActionLoading(false);
+                    }}
+                    sx={{ bgcolor: '#fbbf24', color: '#000', '&:hover': { bgcolor: '#f59e0b' } }}
+                  >
+                    {actionLoading ? <CircularProgress size={16} /> : 'Enable Scaling'}
+                  </Button>
+                  <Button size="small" onClick={() => setShowScalingForm(false)} sx={{ color: '#94a3b8' }}>
+                    Cancel
+                  </Button>
+                </Box>
+              </Paper>
+            ) : (
+              <Paper sx={{ p: 2, bgcolor: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Chip label="Active" size="small" sx={{ bgcolor: 'rgba(16, 185, 129, 0.2)', color: '#10b981' }} />
+                    <Typography variant="body2" sx={{ color: '#e2e8f0' }}>
+                      Replicas: {pod?.replicas || '1/3'}
+                    </Typography>
+                  </Box>
+                </Box>
+              </Paper>
+            )}
+          </Box>
         </TabPanel>
       </DialogContent>
 
@@ -1046,6 +1258,18 @@ const PodDetailModal = ({
           Close
         </Button>
       </DialogActions>
+      
+      {/* Notification Snackbar inside modal */}
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={4000}
+        onClose={() => setNotification({ ...notification, open: false })}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert severity={notification.severity} onClose={() => setNotification({ ...notification, open: false })} sx={{ borderRadius: 2 }}>
+          {notification.message}
+        </Alert>
+      </Snackbar>
     </Dialog>
   );
 };
