@@ -157,8 +157,9 @@ class UserCreate(BaseModel):
     company_name: str
 
 class PodCreate(BaseModel):
-    service_type: str # nginx, postgres, redis, custom
-    custom_image: Optional[str] = None # Optioneel, voor als service_type 'custom' is
+    service_type: str # nginx, postgres, redis, custom, etc.
+    custom_image: Optional[str] = None # For custom/marketplace images
+    custom_port: Optional[int] = None # Custom port for the container
     env_vars: Optional[dict] = None # Custom environment variables
 
 # EUSUITE Configuration - Dylan's Office 365 Suite
@@ -775,16 +776,24 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
         }
         image = image_map.get(pod.service_type, "nginx:latest")
 
-    # Deployment aanmaken
-    target_port = 80
+    # Deployment aanmaken - use custom_port if provided
+    target_port = pod.custom_port if pod.custom_port else 80
     env_vars = []
     
+    # Add custom env_vars if provided
+    if pod.env_vars:
+        for key, value in pod.env_vars.items():
+            env_vars.append(client.V1EnvVar(name=key, value=str(value)))
+    
     if pod.service_type == "postgres": 
-        target_port = 5432
-        env_vars.append(client.V1EnvVar(name="POSTGRES_PASSWORD", value="mysecretpassword"))
+        target_port = pod.custom_port if pod.custom_port else 5432
+        if not pod.env_vars or "POSTGRES_PASSWORD" not in pod.env_vars:
+            env_vars.append(client.V1EnvVar(name="POSTGRES_PASSWORD", value="mysecretpassword"))
         
-    if pod.service_type == "redis": target_port = 6379
-    if pod.service_type == "uptime-kuma": target_port = 3001
+    if pod.service_type == "redis": 
+        target_port = pod.custom_port if pod.custom_port else 6379
+    if pod.service_type == "uptime-kuma": 
+        target_port = pod.custom_port if pod.custom_port else 3001
     
     container = client.V1Container(
         name=pod.service_type if pod.service_type != "custom" else "app",
@@ -831,23 +840,34 @@ def create_pod(pod: PodCreate, current_user: User = Depends(get_current_user)):
                 ports=[client.V1ServicePort(port=target_port, target_port=target_port)]
             )
         )
-        v1.create_namespaced_service(namespace=ns_name, body=service)
+        created_service = v1.create_namespaced_service(namespace=ns_name, body=service)
+        
+        # Get the NodePort assigned by Kubernetes
+        node_port = created_service.spec.ports[0].node_port if created_service.spec.ports else None
+        node_ip = "192.168.154.114"  # Cluster node IP
         
         # Create Ingress for professional domain (except for databases)
+        ingress_url = None
         if pod.service_type not in ["postgres", "redis", "mysql"]:
             host = f"{pod_name}.{ns_name}.192.168.154.114.sslip.io"
             create_ingress(ns_name, f"{pod_name}-svc", target_port, host)
+            ingress_url = f"http://{host}"
         
-        return {"message": f"Pod {pod_name} created successfully"}
+        return {
+            "message": f"Pod {pod_name} created successfully",
+            "name": pod_name,
+            "service_name": f"{pod_name}-svc",
+            "node_ip": node_ip,
+            "node_port": node_port,
+            "access_url": ingress_url or f"http://{node_ip}:{node_port}",
+            "internal_port": target_port
+        }
     except client.exceptions.ApiException as e:
-        raise HTTPException(status_code=500, detail=str(e))
         print(f"Create Pod Error: {e}")
         raise HTTPException(status_code=500, detail=f"K8s Error: {e.reason}")
     except Exception as e:
         print(f"Generic Create Pod Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-    return {"status": "creating", "name": pod_name}
 
 @app.delete("/company")
 def delete_company(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):

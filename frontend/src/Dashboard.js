@@ -485,6 +485,37 @@ const PodCard = React.memo(({
               />
             </Box>
 
+            {/* Access URL */}
+            {(pod.external_url || pod.node_port) && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="caption" sx={{ color: '#94a3b8', minWidth: 60 }}>
+                  Access:
+                </Typography>
+                <Tooltip title={pod.external_url || `http://${pod.public_ip}:${pod.node_port}`}>
+                  <Typography
+                    component="a"
+                    href={pod.external_url || `http://${pod.public_ip}:${pod.node_port}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    variant="caption"
+                    sx={{
+                      color: '#6366f1',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      flex: 1,
+                      textDecoration: 'none',
+                      '&:hover': { textDecoration: 'underline' },
+                    }}
+                  >
+                    {pod.external_url 
+                      ? pod.external_url.replace('http://', '')
+                      : `${pod.public_ip}:${pod.node_port}`}
+                  </Typography>
+                </Tooltip>
+              </Box>
+            )}
+
             {/* Resource Usage */}
             {(pod.cpu_usage || pod.memory_usage) && (
               <Box sx={{ mt: 1 }}>
@@ -911,6 +942,39 @@ const PodDetailModal = ({
                       secondaryTypographyProps={{ color: pod.restarts > 5 ? '#ef4444' : '#e2e8f0' }}
                     />
                   </ListItem>
+                  {(pod.external_url || pod.node_port) && (
+                    <ListItem>
+                      <ListItemText
+                        primary="Access URL"
+                        secondary={
+                          <Box 
+                            component="a" 
+                            href={pod.external_url || `http://${pod.public_ip}:${pod.node_port}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            sx={{ 
+                              color: '#6366f1', 
+                              textDecoration: 'none',
+                              '&:hover': { textDecoration: 'underline' },
+                            }}
+                          >
+                            {pod.external_url || `http://${pod.public_ip}:${pod.node_port}`}
+                          </Box>
+                        }
+                        primaryTypographyProps={{ color: '#94a3b8', variant: 'caption' }}
+                      />
+                    </ListItem>
+                  )}
+                  {pod.node_port && (
+                    <ListItem>
+                      <ListItemText
+                        primary="NodePort"
+                        secondary={`${pod.public_ip}:${pod.node_port}`}
+                        primaryTypographyProps={{ color: '#94a3b8', variant: 'caption' }}
+                        secondaryTypographyProps={{ color: '#e2e8f0', fontFamily: 'monospace' }}
+                      />
+                    </ListItem>
+                  )}
                 </List>
               </Paper>
             </Grid>
@@ -1475,9 +1539,19 @@ const CreatePodModal = ({ open, onClose, onCreate, loading }) => {
   // Handle form submission
   const handleSubmit = () => {
     if (!podData.name || !podData.image) return;
+    
+    // Convert env_vars array to object for backend
+    const envVarsObject = {};
+    podData.env_vars.forEach(ev => {
+      envVarsObject[ev.name] = ev.value;
+    });
+    
+    // Send data in format expected by backend
     onCreate({
-      ...podData,
-      port: podData.port ? parseInt(podData.port) : undefined,
+      service_type: 'custom',
+      custom_image: podData.image,
+      custom_port: podData.port ? parseInt(podData.port) : 80,
+      env_vars: Object.keys(envVarsObject).length > 0 ? envVarsObject : null,
     });
   };
 
@@ -2196,10 +2270,14 @@ export default function Dashboard() {
   const handleCreatePod = async (podData) => {
     setActionLoading(prev => ({ ...prev, create: true }));
     try {
-      await axios.post(`${API_BASE}/pods`, podData, {
+      const response = await axios.post(`${API_BASE}/pods`, podData, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      showNotification(`Pod "${podData.name}" created successfully`, 'success');
+      const data = response.data;
+      const accessInfo = data.access_url 
+        ? `\nAccess: ${data.access_url}` 
+        : (data.node_port ? `\nAccess: http://${data.node_ip}:${data.node_port}` : '');
+      showNotification(`Pod "${data.name || 'new pod'}" created successfully${accessInfo}`, 'success');
       setCreateModalOpen(false);
       fetchPods();
     } catch (err) {
