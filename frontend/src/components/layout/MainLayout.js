@@ -82,7 +82,7 @@ export default function MainLayout({ children, title, actions }) {
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('company');
-    navigate('/login');
+    navigate('/');
   };
   
   const handleDrawerToggle = () => {

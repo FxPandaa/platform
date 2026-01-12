@@ -2186,14 +2186,14 @@ export default function Dashboard() {
   const handleLogout = useCallback(() => {
     localStorage.removeItem('token');
     localStorage.removeItem('company');
-    navigate('/login');
+    navigate('/');
   }, [navigate]);
 
   // Fetch pods with detailed logging
   const fetchPods = useCallback(async () => {
     if (!token) {
       console.log('[Dashboard] No token found, redirecting to login');
-      navigate('/login');
+      navigate('/');
       return;
     }
     
@@ -2263,7 +2263,7 @@ export default function Dashboard() {
     if (token) {
       fetchPods();
     } else {
-      navigate('/login');
+      navigate('/');
     }
   }, [token, navigate, fetchPods]);
 
